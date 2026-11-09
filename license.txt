@@ -11,8 +11,7 @@ information from the League client and game on your PC through the local
 interfaces they provide. It does not change game files or memory.
 During ARAM Mayhem, if turned on in Settings, it reads augment card names
 from the game window on your screen with Windows' built-in text
-recognition. Screenshots are never sent anywhere. If you turn on Save card
-captures, pictures of the card screen are saved on your PC only.
+recognition. Screenshots are never saved or sent anywhere.
 Once a game has started, it can show other players' ranks and recent
 match results from their League profiles (the same public info the client
 shows). It doesn't reveal names hidden in champion select.
@@ -38,11 +37,17 @@ Copyright (c) 2026 Nico Thomas). Augment rankings are shown as letter grades
 only. LoLStat does not collect or send your personal data anywhere. Your
 phone link key is stored only on your PC.
 
-4. No warranty
-LoLStat is provided "as is", without warranty of any kind. The authors are
+4. License
+LoLStat is licensed, not sold. You may install and use it on your own
+computers. You may not copy, share, sell, rent or redistribute it, modify
+it, decompile, disassemble or reverse engineer it, or make other software
+based on it. Copyright (c) 2026 Dougieee3D. All rights reserved.
+
+5. No warranty
+LoLStat is provided "as is", without warranty of any kind. The author is
 not liable for any claim, damage or other liability arising from its use.
 
-5. Riot Games
+6. Riot Games
 LoLStat isn't endorsed by Riot Games and doesn't reflect the views or
 opinions of Riot Games or anyone officially involved in producing or
 managing Riot Games properties. Riot Games, and all associated properties

@@ -1,7 +1,7 @@
 ; LoLStat installer (Inno Setup 6). The builder compiles this automatically.
 
 #define MyAppName "LoLStat"
-#define MyAppVersion "4.0.2"
+#define MyAppVersion "4.0.3"
 #define MyAppExe "LoLStat.exe"
 #define OldAppId "{8F3C2A51-6B7D-4E2A-9C41-2D5E7A1B9F60}"
 
@@ -11,7 +11,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher=LoLStat
-AppCopyright=Copyright (C) 2026 LoLStat
+AppCopyright=Copyright (C) 2026 Dougieee3D. All rights reserved.
 AppComments=League of Legends companion: auto-accept, phone remote and ARAM Mayhem builds.
 VersionInfoVersion={#MyAppVersion}.0
 VersionInfoProductName={#MyAppName}

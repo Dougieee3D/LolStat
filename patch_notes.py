@@ -12,6 +12,16 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.0.3",
+        "date": "2026-11-09",
+        "summary": "Rebuilt augment card reading: grades show almost instantly.",
+        "changes": [
+            ("Augment cards", "Card reading is rebuilt around the real ARAM Mayhem card screen. LoLStat spots the cards the moment they appear and reads just the card names, so grades show almost instantly, rerolls included, on any screen size or HUD scale."),
+            ("Nothing saved", "The card captures setting is gone. LoLStat reads the cards and saves nothing."),
+            ("License", "LoLStat is now proprietary software. You may download and use it, but copying, changing or reselling it isn't allowed."),
+        ],
+    },
+    {
         "version": "4.0.2",
         "date": "2026-11-09",
         "summary": "Card captures, to help make augment card reading perfect.",

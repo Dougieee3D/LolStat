@@ -23,6 +23,17 @@ CLICK_POLL_SECONDS = 0.025
 REGION = (0.03, 0.04, 0.97, 0.90)
 SCAN_BAND = (0.04, 0.14, 0.96, 0.86)   # where augment card names can be while looking for new cards
 SLOT_W, SLOT_H = 0.19, 0.085           # one card's name box, as a share of the game window
+
+# The ARAM Mayhem card screen, measured from real games. Everything scales with the game window's
+# height and is centred horizontally, so it fits any screen (16:9, 21:9, 4K...). s = League HUD scale.
+CARD_DX = 0.3407      # card centres: middle of the screen, and this far either side (x height)
+CARD_EDGE = 0.138     # card frame: this far left/right of a card's centre
+CARD_EDGE_YS = (0.23, 0.20, 0.17)   # rows where the gold frame is checked (above the screen middle)
+CARD_TOP = 0.32       # top of the cards, above the screen middle (for the grade letters)
+NAME_Y = 0.087        # card names: this far above the screen middle
+NAME_W, NAME_H = 0.26, 0.05
+NAME_ZOOM = 3         # names are small (about 13 px at 1080p): enlarge before reading
+FALLBACK_SECONDS = 2.0  # whole-screen search when the frames aren't where expected (unusual HUD scale)
 SLOT_TEXT_H = 72                       # name boxes are enlarged to this height before reading
 SLOT_POLL = 0.04                       # how often the name boxes are checked for changes (cheap)
 SLOT_REREAD = 0.7                      # read the boxes at least this often, even if nothing seems to change
@@ -410,20 +421,20 @@ def _changed(a, b, limit=7.0):
     return sum(abs(x - y) for x, y in zip(a, b)) / len(a) > limit
 
 
-def slot_strip(crops):
-    """Enlarge and contrast-boost each card's name box, stack them into one image.
-    Returns (image, [(y0, y1), ...]) so each line read can be traced back to its card."""
+def slot_strip(crops, zoom=None):
+    """Enlarge and contrast-boost each card's name box (dark text on white reads best), stack them
+    into one image. Returns (image, [(y0, y1), ...]) so each line read can be traced back to its card."""
     from PIL import Image, ImageOps
     parts, spans, y = [], [], 0
     for c in crops:
         g = ImageOps.autocontrast(ImageOps.grayscale(c), cutoff=1)
-        k = SLOT_TEXT_H / max(1, g.height)
-        g = g.resize((max(1, int(g.width * k)), SLOT_TEXT_H))
+        k = zoom or SLOT_TEXT_H / max(1, g.height)
+        g = ImageOps.invert(g.resize((max(1, int(g.width * k)), max(1, int(g.height * k))), Image.LANCZOS))
         parts.append(g)
         spans.append((y, y + g.height))
         y += g.height + 24
     w = max(p.width for p in parts) if parts else 1
-    out = Image.new("L", (w, max(1, y)), 0)
+    out = Image.new("L", (w, max(1, y)), 255)
     for p, (y0, _) in zip(parts, spans):
         out.paste(p, (0, y0))
     return out.convert("RGB"), spans
@@ -485,14 +496,107 @@ class ScreenReader:
                 pass
 
     def _read(self, img):
-        """One read per frame, switching between the plain and the contrast-boosted image each time
-        (half the work of reading both every frame, and a new card screen is still caught right away)."""
-        self._full_mode ^= 1
-        pim, k = _prep(img, self._full_mode)
+        """Whole-screen search (fallback): contrast-boosted, since plain reads miss the card names."""
+        pim, k = _prep(img, 1)
         lines = self.ocr.read(pim)
         texts = [" | ".join(" ".join(w["text"] for w in ln) for ln in lines)]
         cards = self.matcher.find_offer(lines, pim.height, 1 if self.tracker.current else 2)
         return [(aid, x / k, y / k) for aid, x, y in cards], texts
+
+    # ---- fast path: the card screen sits in a known place, so check for the cards' gold frames
+    # (a few pixels, almost free) and read only the three name spots, enlarged.
+    def _scale(self):
+        try:
+            return max(0.6, min(1.4, float(self.settings.get("card_scale", 1.0))))
+        except Exception:
+            return 1.0
+
+    def _layout(self, rect):
+        l, t, r, b = rect
+        W, H = r - l, b - t
+        s = self._scale()
+        cx, mid = l + W / 2, t + H / 2
+        xs = [cx + k * CARD_DX * s * H for k in (-1, 0, 1)]
+        return {"H": H, "s": s, "xs": xs, "name_y": mid - NAME_Y * s * H, "top": mid - CARD_TOP * s * H,
+                "edge": CARD_EDGE * s * H, "edge_ys": [mid - f * s * H for f in CARD_EDGE_YS],
+                "nw": NAME_W * s * H, "nh": NAME_H * s * H}
+
+    def _fast_cards(self, ImageGrab, rect):
+        """Returns how many card frames are on screen (0-3), and reads the names when needed."""
+        L = self._layout(rect)
+        x0 = int(L["xs"][0] - L["edge"] - 6)
+        x1 = int(L["xs"][2] + L["edge"] + 6)
+        y0 = int(min(L["edge_ys"]) - 4)
+        y1 = int(L["name_y"] + L["nh"] / 2 + 4)
+        band = ImageGrab.grab(bbox=(x0, y0, x1, y1), all_screens=True).convert("RGB")
+        px = band.load()
+        frames = 0
+        for x in L["xs"]:
+            edge = [max(px[int(x + sgn * L["edge"] - x0), int(yy - y0)]) for sgn in (-1, 1) for yy in L["edge_ys"]]
+            inside = [max(px[int(x + d * L["H"] * L["s"] - x0), int(L["edge_ys"][1] - y0)]) for d in (-0.08, 0.08)]
+            if sum(edge) / len(edge) > 140 and sum(inside) / len(inside) < 100:
+                frames += 1
+        self._frames = frames
+        if frames < 2:
+            return frames
+        boxes = [(int(x - L["nw"] / 2), int(L["name_y"] - L["nh"] / 2), int(x + L["nw"] / 2), int(L["name_y"] + L["nh"] / 2))
+                 for x in L["xs"]]
+        crops = [band.crop((b[0] - x0, b[1] - y0, b[2] - x0, b[3] - y0)) for b in boxes]
+        sigs = [_sig(c) for c in crops]
+        now = time.time()
+        moved = len(sigs) != len(self._slot_sigs) or any(_changed(a, b, 5.0) for a, b in zip(sigs, self._slot_sigs))
+        if not moved and self._slot_last_ok and now - self._slot_read_t < SLOT_REREAD:
+            return frames
+        strip, spans = slot_strip(crops, zoom=max(1.2, NAME_ZOOM * 1080 / max(1, L["H"])))
+        lines = self.ocr.read(strip)
+        texts = [""] * 3
+        for ln in lines:
+            for w in ln:
+                cy = w["y"] + w["h"] / 2
+                for i, (a, b) in enumerate(spans):
+                    if a - 6 <= cy <= b + 6:
+                        texts[i] = (texts[i] + " " + w["text"]).strip()
+        cards = []
+        for i, txt in enumerate(texts):
+            aid = self.matcher.lookup(txt)
+            if not aid:                              # extra words read next to the name: try each line alone
+                for ln in lines:
+                    if ln and spans[i][0] - 6 <= ln[0]["y"] + ln[0]["h"] / 2 <= spans[i][1] + 6:
+                        aid = self.matcher.lookup(" ".join(w["text"] for w in ln))
+                        if aid:
+                            break
+            if aid:
+                cards.append((aid, L["xs"][i], L["name_y"]))
+        self._slot_sigs, self._slot_read_t = sigs, now
+        self._slot_last_ok = len(cards) == 3
+        self._fast_top = L["top"]
+        self.last_text = " | ".join(texts)
+        self.svc.reader_info = dict(getattr(self.svc, "reader_info", {}) or {}, last_scan=time.strftime("%H:%M:%S"),
+                                    cards_matched=[self.svc.aug_names.get(a, a) for a, _, _ in cards], card_frames=frames,
+                                    text_seen=self.last_text[:400], mode="reading the card names", hud_scale=round(L["s"], 3))
+        if cards:
+            if len(cards) >= 2 and not self.settings.get("card_layout_ok"):
+                self.settings["card_layout_ok"] = True      # found the quick way: the backup search isn't needed
+            for e in self.tracker.frame(cards, now):
+                self._handle(e)
+        return frames
+
+    def _calibrate(self, cards, rect):
+        """The whole-screen search found cards somewhere else: learn where (League HUD scale)."""
+        if len(cards) < 2:
+            return
+        l, t, r, b = rect
+        H = b - t
+        xs = sorted(x for _, x, _ in cards)
+        gap = (xs[-1] - xs[0]) / (len(xs) - 1) if len(cards) == 3 else None
+        if gap is None:
+            gap = xs[1] - xs[0]
+            if gap > 1.5 * CARD_DX * H:              # the middle one was missed
+                gap /= 2
+        s = max(0.6, min(1.4, gap / (CARD_DX * H)))
+        if abs(s - self._scale()) > 0.02:
+            self.settings["card_scale"] = round(s, 3)
+            self.log(f"Augment cards: adjusted to your HUD scale ({s:.2f}).")
 
     def _slot_boxes(self, rect):
         """Name boxes to watch: the known cards, plus where a card that wasn't read yet must be."""
@@ -545,17 +649,6 @@ class ScreenReader:
                 cards.append((aid, (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2))
         self._slot_sigs, self._slot_read_t = sigs, now
         self._slot_last_ok = len(cards) >= min(3, len(boxes))
-        ct = getattr(self, "_click_t", 0)
-        if ct and now - ct > 1.5 and now - getattr(self, "_last_offer_t", 0) > 1.5 and self.tracker.current:
-            self._click_t = 0                        # clicked a card or reroll, but nothing changed
-            self.capture("click-no-change", cards, None, boxes)
-        if self._slot_last_ok:
-            self._part_t = 0
-        elif not getattr(self, "_part_t", 0):
-            self._part_t = now
-        elif now - self._part_t > 1.2 and len(cards) > 0:
-            self._part_t = now + 30                  # some cards unreadable for a while
-            self.capture("cards-unreadable", cards, None, boxes)
         self.last_text = " | ".join(texts)
         self.svc.reader_info = dict(getattr(self.svc, "reader_info", {}) or {}, last_scan=time.strftime("%H:%M:%S"),
                                     cards_matched=[self.svc.aug_names.get(a, a) for a, _, _ in cards],
@@ -586,10 +679,10 @@ class ScreenReader:
         if True:
             if e[0] == "offer":
                 self._slot_sigs = []                 # new cards: start watching their name boxes fresh
-                self.capture("reroll" if box is None else "cards-found", [(a, x, y) for a, (x, y) in zip(e[1], e[2])])
-                self._last_offer_t = time.time()
                 old = getattr(self, "_known_tops", None) or []
                 tops = [None] * len(e[2]) if band or box is None else self._tops(e[2], box)
+                if box is None and getattr(self, "_fast_top", None) is not None:
+                    tops = [self._fast_top] * len(e[2])     # the cards' top edge, from the known layout
                 for i, (x, y) in enumerate(e[2]):        # same slot as before (a reroll): same card top
                     if tops[i] is None and old:
                         ox, oy, ot = min(old, key=lambda o: abs(o[0] - x))
@@ -617,7 +710,6 @@ class ScreenReader:
                         time.sleep(0.6)
                         continue
                     self._status("Waiting for a game")
-                    self._cap_n = 0                  # captures are limited per game
                 else:
                     hwnd, rect = league_window()
                     self.game_rect = rect
@@ -628,12 +720,29 @@ class ScreenReader:
                     else:
                         self.matcher.update(self.svc.match_names())
                         self._check_lang()
-                        if self.tracker.current:         # cards are up: watch their name boxes (fast, light)
+                        frames = self._fast_cards(ImageGrab, rect)
+                        now = time.time()
+                        if frames >= 2:                  # cards are up: keep reading their names
                             self._status("Reading augment cards")
-                            self._watch_slots(ImageGrab, rect)
                             self._wake.wait(SLOT_POLL)
                             self._wake.clear()
                             continue
+                        if self.tracker.current:         # cards gone: settles the pick
+                            for e in self.tracker.frame([], now):
+                                self._handle(e)
+                            self._slot_sigs = []
+                        perf = 1.5 if self.settings.get("perf_mode") else 1
+                        lv, gt = int(live.get("level") or 0), float(live.get("time") or 0)
+                        if lv > getattr(self, "_last_level", lv) or gt < 75:
+                            self._burst_until = max(self._burst_until, now + LEVEL_BURST)
+                        self._last_level = lv
+                        if (self.settings.get("card_layout_ok") or now - getattr(self, "_fallback_t", 0) < FALLBACK_SECONDS
+                                or str(live.get("mode", "")).upper() != "KIWI"):
+                            self._status("Watching for augment cards")
+                            self._wake.wait(0.03 if now < self._burst_until else 0.1 * perf)
+                            self._wake.clear()
+                            continue
+                        self._fallback_t = now           # whole-screen search, in case the HUD is scaled differently
                         l, t, r, b = rect
                         W, H = r - l, b - t
                         box = (l + int(W * SCAN_BAND[0]), t + int(H * SCAN_BAND[1]),
@@ -660,16 +769,13 @@ class ScreenReader:
                             }
                             cards = [(a, x / scale, y / scale) for a, x, y in cards]
                             self._status("Reading augment cards" if cards else "Watching for augment cards")
+                            if cards:
+                                self._calibrate([(a, box[0] + x, box[1] + y) for a, x, y in cards], rect)
                             self._emit(cards, box, band)
                             perf = 1.5 if self.settings.get("perf_mode") else 1
                             lv, gt = int(live.get("level") or 0), float(live.get("time") or 0)
                             if lv > getattr(self, "_last_level", lv) or gt < 75:
                                 self._burst_until = max(self._burst_until, time.time() + LEVEL_BURST)
-                            if lv > getattr(self, "_last_level", lv):
-                                self._levelup_t = time.time()
-                            if getattr(self, "_levelup_t", 0) and time.time() - self._levelup_t > 5 and not self.tracker.current:
-                                self._levelup_t = 0
-                                self.capture("levelup-no-cards", cards, None)
                             self._last_level = lv
                             if time.time() < self._burst_until:
                                 pause = SCAN_CLICK
@@ -734,45 +840,6 @@ class ScreenReader:
         except Exception:
             pass
 
-    # ---- card captures: what the reader saw at the moments that matter (Settings, off by default)
-    CAPTURE_LIMIT = 60          # per game
-    CAPTURE_KEEP = 200          # files kept in the folder (oldest are removed)
-
-    def capture(self, why, cards=None, img=None, boxes=None):
-        """Save the game window and what was read, if 'Save card captures' is on."""
-        if not self.settings.get("capture_cards") or not getattr(self, "game_rect", None):
-            return
-        n = getattr(self, "_cap_n", 0)
-        if n >= self.CAPTURE_LIMIT:
-            return
-        self._cap_n = n + 1
-        threading.Thread(target=self._capture, args=(why, list(cards or []), img, boxes), daemon=True).start()
-
-    def _capture(self, why, cards, img, boxes):
-        try:
-            import json as _json
-            import os
-            from PIL import ImageGrab
-            os.makedirs(self.snap_dir, exist_ok=True)
-            stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
-            name = f"{stamp}-{why}"
-            shot = img or ImageGrab.grab(bbox=self.game_rect, all_screens=True)
-            shot.save(os.path.join(self.snap_dir, name + ".png"))
-            info = {"why": why, "time": stamp, "game_window": self.game_rect, "status": self.svc.scanner_status,
-                    "cards_matched": [self.svc.aug_names.get(a, a) for a, _, _ in cards],
-                    "card_positions": [(x, y) for _, x, y in cards],
-                    "watched_boxes": boxes, "text_read": self.last_text,
-                    "offer_on_screen": [self.svc.aug_names.get(a, a) for a in (self.tracker.current or {}).get("ids", [])],
-                    "ocr_language": getattr(self.ocr, "lang_tag", "?"), "game_language": self.svc.locale,
-                    "level": (self.svc.live or {}).get("level"), "game_time": (self.svc.live or {}).get("time")}
-            with open(os.path.join(self.snap_dir, name + ".json"), "w", encoding="utf-8") as f:
-                _json.dump(info, f, indent=1, ensure_ascii=False)
-            files = sorted(x for x in os.listdir(self.snap_dir) if x[:2].isdigit())
-            for old in files[:-self.CAPTURE_KEEP]:
-                os.remove(os.path.join(self.snap_dir, old))
-        except Exception as e:
-            self.log(f"Card capture failed: {e}")
-
     def snapshot(self):
         """Save what LoLStat sees right now (whole game window + the text it read). Returns the folder."""
         import os
@@ -810,7 +877,6 @@ class ScreenReader:
             if down and not was_down and self.tracker.current:
                 u.GetCursorPos(ctypes.byref(pt))
                 self.tracker.click(pt.x, pt.y, time.time())
-                self._click_t = time.time()
                 self._burst_until = time.time() + FAST_AFTER_CLICK
                 self._wake.set()                     # read the screen right now (a reroll is coming)
             was_down = down

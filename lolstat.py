@@ -465,7 +465,7 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 settings = {"overlay": True, "scan": True, "panel_open": False, "itemsets": True, "spells": True, "runes": True,
             "theme_follow": False,
             # quality of life
-            "notify": True, "dnd": False, "dnd_ranked": True, "perf_mode": True, "close_to_tray": False, "capture_cards": False,
+            "notify": True, "dnd": False, "dnd_ranked": True, "perf_mode": True, "close_to_tray": False,
             "start_hidden": False, "show_on_league": True, "notify_friends": True, "hotkey_mods": "ctrl+shift", "hotkey_key": "L",
             "goal_type": "", "goal_target": 0, "favorites": [], "pinned": {}, "fav_itemsets": False,
             "pick_list": [], "ban_list": [], "text_scale": 1.0, "colorblind": False, "reduce_motion": False,
@@ -989,7 +989,7 @@ def lcu_call(method, path, body=None):
     return lcu.req(method, path, body)
 
 
-SNAP_DIR = os.path.join(os.path.expanduser("~"), "Documents", "LoLStat", "Card captures")
+SNAP_DIR = os.path.join(DATA_DIR, "snapshots")
 
 # ---------------------------------------------------------------- item sets in the League client
 import uuid

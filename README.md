@@ -28,6 +28,10 @@ Every release is scanned with Microsoft Defender and published with a SHA-256 ch
 
 Windows may show "Windows protected your PC" the first time: click **More info**, then **Run anyway**.
 
+## License
+
+Copyright (c) 2026 Dougieee3D. All rights reserved. LoLStat is proprietary software: you may download and use the official releases, but copying, modifying, redistributing or reselling it, in whole or in part, isn't allowed. See [LICENSE](LICENSE).
+
 ---
 
 LoLStat isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.
