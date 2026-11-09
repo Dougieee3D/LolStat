@@ -12,6 +12,18 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.1.0",
+        "date": "2026-11-09",
+        "summary": "Clips: your best moments recorded automatically.",
+        "changes": [
+            ("Clips", "Turn on clips and LoLStat records your kills, multikills, aces, objective steals and wins automatically, with game sound. Back-to-back kills become one clip, like a Triple kill."),
+            ("Save any moment", "Press Ctrl+Shift+C in game to save the last 30 seconds."),
+            ("Clips page", "Watch, filter and delete your clips right in the app, grouped by game. They're saved in Videos\\LoLStat on your PC and nothing is uploaded."),
+            ("Smooth while you play", "Recording uses your graphics card's video encoder, so your game stays smooth. Pick Smooth, High or Max quality, clip length, which moments to keep, and a storage limit in Settings."),
+            ("Full games", "Optionally keep a recording of the whole game too."),
+        ],
+    },
+    {
         "version": "4.0.3",
         "date": "2026-11-09",
         "summary": "Rebuilt augment card reading: grades show almost instantly.",

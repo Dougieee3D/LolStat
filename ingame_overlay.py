@@ -289,6 +289,9 @@ class InGameLayer(threading.Thread):
                     else:
                         got.append(f"Overlay: {label}+{want[1]} is taken by another app, pick another key")
                     snap_mods = 0x0002 | 0x0004 | 0x4000
+                    u.UnregisterHotKey(None, 3)
+                    if u.RegisterHotKey(None, 3, snap_mods, ord("C")):
+                        got.append("save clip: Ctrl+Shift+C")
                     if u.RegisterHotKey(None, 2, snap_mods, ord("S")) or u.RegisterHotKey(None, 2, 0x0001 | 0x0004 | 0x4000, ord("S")):
                         got.append("snapshot ready")
                     self.svc.hotkey_status = ", ".join(got)
@@ -297,6 +300,8 @@ class InGameLayer(threading.Thread):
                     if msg.message == 0x0312:       # WM_HOTKEY
                         if msg.wParam == 1:
                             self.toggle_req = True
+                        elif msg.wParam == 3 and getattr(self.svc, "save_clip", None):
+                            threading.Thread(target=self.svc.save_clip, daemon=True).start()
                         elif msg.wParam == 2:
                             threading.Thread(target=self._snap, daemon=True).start()
                 time.sleep(0.05)

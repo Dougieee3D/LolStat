@@ -47,7 +47,13 @@ based on it. Copyright (c) 2026 Dougieee3D. All rights reserved.
 LoLStat is provided "as is", without warranty of any kind. The author is
 not liable for any claim, damage or other liability arising from its use.
 
-6. Riot Games
+6. Third-party software
+The clip recorder is FFmpeg (https://ffmpeg.org), licensed under the GNU
+Lesser General Public License v2.1, built by BtbN
+(https://github.com/BtbN/FFmpeg-Builds, where its source is available).
+Game sound is captured with PyAudioWPatch and PortAudio (MIT License).
+
+7. Riot Games
 LoLStat isn't endorsed by Riot Games and doesn't reflect the views or
 opinions of Riot Games or anyone officially involved in producing or
 managing Riot Games properties. Riot Games, and all associated properties

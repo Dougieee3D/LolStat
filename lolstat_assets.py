@@ -1,7 +1,7 @@
 """LoLStat logo images (PNG, base64) for the app window."""
 
 APP_NAME = "LoLStat"
-APP_VERSION = "4.0.3"
+APP_VERSION = "4.1.0"
 RIOT_NOTICE = ("LoLStat isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games "
                "or anyone officially involved in producing or managing Riot Games properties. "
                "League of Legends is a trademark of Riot Games, Inc.")

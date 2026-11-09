@@ -299,6 +299,12 @@ class MayhemService:
         while True:
             snap = _live_snapshot()
             self.set_live(self.parse_live(snap) if snap else None)
+            cb = getattr(self, "on_snapshot", None)
+            if cb:
+                try:
+                    cb(snap)                     # clips: the live game data says what just happened
+                except Exception as e:
+                    self.log(f"Clips: {e}")
             self._save_session()
             time.sleep(LIVE_POLL_SECONDS * (1.67 if self.settings.get("perf_mode") and self.live else 1))
 

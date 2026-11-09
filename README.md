@@ -17,6 +17,7 @@ Requires Windows 10 or 11. For the in-game overlay, set League's Window Mode to 
 - **Build guide:** what to buy first, your first back, core items, boots, end game and situational swaps, with **Buy now** when the enemy team calls for it.
 - **ARAM Mayhem:** a grade above every augment card the moment it appears, rerolls included, plus augment combos.
 - **In-game panel:** your builds for the game, resizable, with your own theme or your champion skin's colors.
+- **Clips:** your kills, multikills, aces, objective steals and wins recorded automatically with game sound, plus Ctrl+Shift+C to save the last 30 seconds. Watch them right in the app.
 - **Party Showdown:** a best of 3 or best of 5 with your party, scored on damage to champions after every game.
 - **My stats:** post-game coach, records, badges, LP graph, duos and rivals, best times to play, highlights and a season card.
 - **Fun:** daily and weekly missions, Chaos mode, your augment collection and a build lab.

@@ -1,7 +1,7 @@
 ; LoLStat installer (Inno Setup 6). The builder compiles this automatically.
 
 #define MyAppName "LoLStat"
-#define MyAppVersion "4.0.3"
+#define MyAppVersion "4.1.0"
 #define MyAppExe "LoLStat.exe"
 #define OldAppId "{8F3C2A51-6B7D-4E2A-9C41-2D5E7A1B9F60}"
 

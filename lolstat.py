@@ -474,6 +474,9 @@ settings = {"overlay": True, "scan": True, "panel_open": False, "itemsets": True
             # launch
             "showdown_best_of": 3, "showdown_auto": True,
             "overlay_look": "app", "panel_size": 0.85, "overlay_alpha": 0.9,
+            "clips_on": False, "clip_quality": "high", "clip_before": 12, "clip_after": 5, "clip_sound": True,
+            "clip_full_game": False, "clip_max_gb": 20, "clip_kills": True, "clip_multikills": True, "clip_deaths": False,
+            "clip_assists": False, "clip_objectives": True, "clip_aces": True, "clip_game_end": True,
             "onboarded": False, "last_version": "", "safe_mode": False, "_safe_saved": {},
             "spell_d": "Smart", "spell_f": "Smart", "badge_up": 0.10, "badge_size": 1.0, "theme": "dark"}
 try:
@@ -589,7 +592,8 @@ def full_state():
         "settings": dict(settings),
         "mayhem": mayhem.state() if mayhem else {},
         "log": [l for l in LOG_LINES if "Phone remote:" not in l][-8:],
-        "goal": goal_progress(), "dnd_active": is_dnd(), "showdown": showdown.summary(), "tilt_lock": tilt_locked(),
+        "goal": goal_progress(), "dnd_active": is_dnd(), "showdown": showdown.summary(),
+            "clips": clips.view() if clips else None, "tilt_lock": tilt_locked(),
         "onboarded": bool(settings.get("onboarded")), "show_whatsnew": bool(settings.get("onboarded")) and settings.get("last_version") != APP_VERSION,
         "my_champs": {c["champion"]: [c["games"], c["wr"]] for c in (insights_data().get("champions") or [])},
         "snapshots": SNAP_DIR,
@@ -755,6 +759,12 @@ def do_action(body):
                 settings["theme_follow"] = False
                 save_settings()
             return
+        if name in ("clip_quality", "clip_before", "clip_after", "clip_max_gb"):
+            settings[name] = value if name == "clip_quality" else max(1, min(200, float(value)))
+            if name == "clip_quality" and clips and clips.proc:
+                log("Clips: the new quality starts with your next game")
+            save_settings()
+            return
         if name in ("badge_up", "badge_size", "theme", "custom_theme", "overlay_theme", "spell_d", "spell_f",
                     "hotkey_mods", "hotkey_key", "text_scale", "tilt_losses", "tilt_minutes",
                     "overlay_look", "panel_size", "overlay_alpha"):
@@ -771,6 +781,21 @@ def do_action(body):
     elif act == "test_overlay":
         mayhem.test_until = time.time() + 15
         mayhem.notify("Test overlay: look at your screen for the LoLStat button, panel and three sample letters (15 seconds).")
+    elif act == "clip_delete":
+        if clips:
+            clips.delete(body.get("path", ""))
+    elif act in ("clip_folder", "clip_show"):
+        try:
+            if act == "clip_show" and clips and clips.resolve(body.get("path", "")):
+                subprocess.Popen(["explorer", "/select,", clips.resolve(body["path"])])
+            else:
+                os.makedirs(clips.folder(), exist_ok=True)
+                os.startfile(clips.folder())
+        except Exception:
+            pass
+    elif act == "clip_save":
+        if clips:
+            clips.save_last(int(body.get("seconds") or 30))
     elif act == "open_snapshots":
         os.makedirs(SNAP_DIR, exist_ok=True)
         try:
@@ -803,6 +828,40 @@ class Handler(BaseHTTPRequestHandler):
     def _status(self):
         with lock:
             return json.dumps(state)
+
+    def _send_file(self, p, ctype):
+        """Serve a file with Range support, so the clip player can seek."""
+        size = os.path.getsize(p)
+        start, end = 0, size - 1
+        rng = self.headers.get("Range", "")
+        m = re.match(r"bytes=(\d*)-(\d*)", rng)
+        if m and (m.group(1) or m.group(2)):
+            if m.group(1):
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else size - 1
+            else:
+                start = max(0, size - int(m.group(2)))
+            end = min(end, size - 1)
+        try:
+            self.send_response(206 if m and rng else 200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(end - start + 1))
+            if m and rng:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            with open(p, "rb") as f:
+                f.seek(start)
+                left = end - start + 1
+                while left > 0:
+                    chunk = f.read(min(1 << 20, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass
 
     def do_GET(self):
         path = urlparse(self.path).path
@@ -845,6 +904,13 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 data = []
             self._send(200, json.dumps(data))
+        elif path == "/api/clips":
+            self._send(200, json.dumps({"clips": clips.list() if clips else [], "recorder": clips.view() if clips else {}}))
+        elif path in ("/clip", "/clipthumb"):
+            p = clips.resolve(parse_qs(urlparse(self.path).query).get("f", [""])[0]) if clips else None
+            if not p:
+                return self._send(404, "Not found", "text/plain")
+            return self._send_file(p, "image/jpeg" if p.endswith(".jpg") else "video/mp4")
         elif path == "/api/showdown":
             self._send(200, json.dumps(showdown.view(int(settings.get("showdown_best_of", 3)))))
         elif path == "/api/challenges":
@@ -2268,6 +2334,8 @@ def run_fallback():
             time.sleep(3600)
 
 
+clips = None
+
 _mutex = {"h": None}
 
 
@@ -2324,6 +2392,16 @@ def main():
         return
     from mayhem_service import MayhemService
     mayhem = MayhemService(DATA_DIR, log, settings)
+    global clips
+    try:
+        import clips as clips_mod
+        import screen_reader as _sr
+        clips = clips_mod.ClipRecorder(DATA_DIR, settings, log, lambda t: notify_user("LoLStat clips", t),
+                                       window=lambda: _sr.league_window())
+        mayhem.on_snapshot = clips.on_snapshot
+        mayhem.save_clip = lambda: clips.save_last(30)
+    except Exception as e:
+        log(f"Clips unavailable: {e}")
     mayhem.start()
     threading.Thread(target=server.serve_forever, daemon=True).start()
     threading.Thread(target=worker, daemon=True).start()

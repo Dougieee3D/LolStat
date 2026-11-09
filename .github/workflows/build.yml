@@ -45,7 +45,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller qrcode pillow pywebview pystray
+          python -m pip install pyinstaller qrcode pillow pywebview pystray pyaudiowpatch
           python -m pip install winsdk
           if ($LASTEXITCODE -ne 0) {
             python -m pip install winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Security.Cryptography winrt-Windows.Globalization winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Storage.Streams
@@ -61,8 +61,29 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item branding\* . -Force
-          python -m PyInstaller --onedir --noconsole --noconfirm --clean --log-level WARN --icon lolstat.ico --version-file version_info.txt --collect-all webview --hidden-import mayhem_service --hidden-import mayhem_engine --hidden-import mayhem_snapshot --hidden-import screen_reader --hidden-import ui_pages --hidden-import lolstat_assets --hidden-import ingame_overlay --hidden-import lcu_stats --hidden-import runes --hidden-import champ_themes --hidden-import insights --hidden-import fun --hidden-import ui_more --hidden-import showdown --hidden-import build_guide --hidden-import patch_notes --hidden-import pystray --hidden-import pystray._win32 --hidden-import clr --hidden-import winsdk.windows.media.ocr --hidden-import winsdk.windows.graphics.imaging --hidden-import winsdk.windows.security.cryptography --hidden-import winsdk.windows.globalization --hidden-import winsdk.windows.foundation --hidden-import winsdk.windows.foundation.collections --hidden-import winsdk.windows.storage.streams --hidden-import winrt.windows.media.ocr --hidden-import winrt.windows.graphics.imaging --hidden-import winrt.windows.security.cryptography --hidden-import winrt.windows.globalization --hidden-import winrt.windows.foundation --hidden-import winrt.windows.foundation.collections --hidden-import winrt.windows.storage.streams --name LoLStat lolstat.py
+          python -m PyInstaller --onedir --noconsole --noconfirm --clean --log-level WARN --icon lolstat.ico --version-file version_info.txt --collect-all webview --hidden-import mayhem_service --hidden-import mayhem_engine --hidden-import mayhem_snapshot --hidden-import screen_reader --hidden-import ui_pages --hidden-import lolstat_assets --hidden-import ingame_overlay --hidden-import lcu_stats --hidden-import runes --hidden-import champ_themes --hidden-import insights --hidden-import fun --hidden-import ui_more --hidden-import showdown --hidden-import build_guide --hidden-import patch_notes --hidden-import clips --hidden-import pyaudiowpatch --hidden-import pystray --hidden-import pystray._win32 --hidden-import clr --hidden-import winsdk.windows.media.ocr --hidden-import winsdk.windows.graphics.imaging --hidden-import winsdk.windows.security.cryptography --hidden-import winsdk.windows.globalization --hidden-import winsdk.windows.foundation --hidden-import winsdk.windows.foundation.collections --hidden-import winsdk.windows.storage.streams --hidden-import winrt.windows.media.ocr --hidden-import winrt.windows.graphics.imaging --hidden-import winrt.windows.security.cryptography --hidden-import winrt.windows.globalization --hidden-import winrt.windows.foundation --hidden-import winrt.windows.foundation.collections --hidden-import winrt.windows.storage.streams --name LoLStat lolstat.py
           if (-not (Test-Path dist\LoLStat\LoLStat.exe)) { throw "LoLStat.exe wasn't built" }
+
+      - name: Add the clip recorder (FFmpeg, LGPL build)
+        shell: pwsh
+        run: |
+          $base = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest"
+          $zip = "ffmpeg-master-latest-win64-lgpl.zip"
+          Invoke-WebRequest "$base/$zip" -OutFile $zip
+          Invoke-WebRequest "$base/checksums.sha256" -OutFile ffmpeg-checksums.txt
+          $want = (Select-String -Path ffmpeg-checksums.txt -Pattern ([regex]::Escape($zip))).Line.Split(" ")[0].ToLower()
+          $got = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($want -ne $got) { throw "FFmpeg download doesn't match its published checksum" }
+          Expand-Archive $zip -DestinationPath ffmpeg-dl
+          $exe = Get-ChildItem ffmpeg-dl -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $exe.FullName dist\LoLStat\ffmpeg.exe
+          & dist\LoLStat\ffmpeg.exe -hide_banner -version | Select-Object -First 1 | Tee-Object -FilePath ffmpeg-version.txt
+          $filters = & dist\LoLStat\ffmpeg.exe -hide_banner -filters
+          if (-not ($filters -match "ddagrab")) { throw "This FFmpeg build has no screen capture (ddagrab)" }
+          & dist\LoLStat\ffmpeg.exe -hide_banner -loglevel error -f lavfi -i testsrc2=size=1280x720:rate=30 -t 2 -c:v h264_mf -f null -
+          if ($LASTEXITCODE -ne 0) { Write-Host "h264_mf not usable on the build machine (needs a real PC); other encoders are tried at runtime" }
+          & dist\LoLStat\ffmpeg.exe -hide_banner -loglevel error -f lavfi -i testsrc2=size=1280x720:rate=30 -t 2 -c:v mpeg4 -f null -
+          if ($LASTEXITCODE -ne 0) { throw "FFmpeg can't encode video" }
 
       - name: Build the installer
         shell: pwsh
@@ -100,6 +121,7 @@ jobs:
             "LoLStat ${{ steps.ver.outputs.version }}",
             "Built from commit ${{ github.sha }} by GitHub Actions run ${{ github.run_id }}",
             "Python: $(python --version)",
+            "Clip recorder: $(Get-Content ffmpeg-version.txt)",
             (Get-Content defender.txt),
             "SHA-256 of LoLStat-Setup.exe: $h",
             "",

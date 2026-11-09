@@ -1017,3 +1017,130 @@ def extend7(html):
     html = html.replace('''a small LoLStat button opens a panel with your builds and augments.''', '''a small LoLStat button opens a panel with your builds (locked for the whole game).''', 1)
     html = html.replace('''['Troubleshooting','#trouble'],''', '''['Troubleshooting','#trouble'],['In-game panel look and size','#ovLook'],''', 1)
     return html
+
+
+# ====================================================================== Clips: automatic highlight recording
+NAV8 = r'''  <button class="nav" data-page="clips" aria-label="Clips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="14" height="14" rx="2.5"/><path d="m16.5 10 5-3v10l-5-3"/></svg><span class="tip">Clips</span></button>
+'''
+
+PAGE8 = r'''
+  <!-- CLIPS -->
+  <section class="page" id="p-clips"><div id="clOut"></div></section>
+  <div class="modal" id="clModal" role="dialog" aria-modal="true" aria-label="Clip"><div class="sheet cl-sheet">
+    <video id="clVideo" controls playsinline></video>
+    <div class="cl-bar"><div><b id="clTitle"></b><div class="muted" id="clMeta" style="font-size:12px"></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="clStep(-1)" aria-label="Previous clip">‹</button><button class="btn" onclick="clStep(1)" aria-label="Next clip">›</button>
+      <button class="btn" onclick="act('clip_show',{path:CL_CUR.path})">Show in folder</button>
+      <button class="btn" onclick="clDelete(CL_CUR)">Delete</button><button class="btn gold" onclick="clClose()">Close</button></div></div>
+  </div></div>'''
+
+SETTINGS8 = r'''
+    <div class="box" style="max-width:860px;margin-top:16px" id="clSettings">
+      <h2>Clips</h2><div class="muted" style="font-size:12.5px">Records your best moments automatically while you play. Saved in Videos\LoLStat on your PC.</div>
+      <div class="set"><div><b>Record clips</b><p>Turns highlight recording on or off. Ctrl+Shift+C in game saves the last 30 seconds any time.</p></div><button class="switch" data-set="clips_on"></button></div>
+      <div class="set"><div><b>Quality</b><p>Smooth uses the least performance. High is great for sharing.</p></div><select id="clQuality"><option value="smooth">Smooth (720p, 30 fps)</option><option value="high">High (1080p, 60 fps)</option><option value="max">Max (your resolution, 60 fps)</option></select></div>
+      <div class="set"><div><b>Clip length</b><p>Seconds kept before and after each moment.</p></div><div style="display:flex;gap:8px"><select id="clBefore"><option>5</option><option>8</option><option>12</option><option>15</option><option>20</option><option>30</option></select><select id="clAfter"><option>3</option><option>5</option><option>8</option><option>10</option></select></div></div>
+      <div class="set"><div><b>Storage limit</b><p>The oldest clips are removed when the folder gets bigger than this.</p></div><select id="clMax"><option value="5">5 GB</option><option value="10">10 GB</option><option value="20">20 GB</option><option value="50">50 GB</option><option value="100">100 GB</option></select></div>
+      <div class="auto" id="clKinds"></div>
+      <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" onclick="act('clip_folder')">Open clips folder</button></div>
+    </div>'''
+
+CSS8 = r'''
+/* clips */
+.cl-head{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.cl-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:1px}
+.cl-dot.rec{background:#ff4d5e;box-shadow:0 0 0 4px rgba(255,77,94,.2);animation:sdpulse 1.6s infinite}
+.cl-dot.ok{background:var(--teal)}
+.cl-filters{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+.cl-filters button{padding:6px 12px;border-radius:99px;border:1px solid var(--line2);font-size:12.5px;font-weight:600}
+.cl-filters button.on{background:var(--gold);border-color:var(--gold);color:#0c1220}
+.cl-game{margin-top:18px}.cl-game h3{margin:0 0 10px;font-size:14px;color:var(--muted);font-weight:700}
+.cl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.cl-card{border-radius:14px;overflow:hidden;background:var(--panel);border:1px solid var(--line);cursor:pointer;transition:transform .15s,border-color .15s;text-align:left;padding:0}
+.cl-card:hover{transform:translateY(-2px);border-color:var(--gold)}
+.cl-thumb{position:relative;aspect-ratio:16/9;background:#05070d center/cover no-repeat}
+.cl-thumb .len{position:absolute;right:8px;bottom:8px;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:rgba(0,0,0,.7);color:#fff}
+.cl-thumb .tag{position:absolute;left:8px;top:8px;font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--gold);color:#0c1220}
+.cl-thumb .play{position:absolute;inset:0;display:grid;place-items:center;opacity:0;transition:opacity .15s;background:rgba(0,0,0,.25)}
+.cl-card:hover .play{opacity:1}
+.cl-thumb .play i{width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.9);display:grid;place-items:center;color:#0c1220;font-style:normal;font-size:18px;padding-left:3px}
+.cl-info{padding:10px 12px}.cl-info b{font-size:13.5px}.cl-info .muted{font-size:12px}
+.cl-sheet{max-width:min(1200px,94vw);padding:12px}
+.cl-sheet video{width:100%;max-height:72vh;border-radius:10px;background:#000;display:block}
+.cl-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
+'''
+
+JS8 = r'''
+// ---------------- Clips
+let CL = null, CL_FILTER = 'all', CL_CUR = null, CL_LIST = [];
+const CL_FILTERS = [['all','All'],['multi','Multikills'],['kills','Kills'],['obj','Objectives'],['saved','Saved'],['full','Full games']];
+function clMatch(c){
+  const t = c.title || '';
+  return CL_FILTER === 'all' || (CL_FILTER === 'multi' && /Double|Triple|Quadra|Penta/.test(t)) || (CL_FILTER === 'kills' && /kill/i.test(t))
+    || (CL_FILTER === 'obj' && /Baron|Dragon|Herald|Turret|steal|Ace/.test(t)) || (CL_FILTER === 'saved' && c.manual) || (CL_FILTER === 'full' && t === 'Full game');
+}
+async function loadClips(){ try { CL = await api('/api/clips'); if (page === 'clips') drawClips(); } catch(e){ console.error('clips', e); } }
+setInterval(()=>{ if (page === 'clips' && !q('#clModal').classList.contains('on')) loadClips(); }, 5000);
+const clUrl = (route, p) => `${route}?f=${encodeURIComponent(p)}&key=${encodeURIComponent(KEY)}`;
+const clLen = s => s >= 60 ? `${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}` : `0:${String(Math.round(s)).padStart(2,'0')}`;
+function drawClips(){
+  const el = q('#clOut'); if (!CL){ el.innerHTML = '<div class="box"><div class="muted">Loading…</div></div>'; return; }
+  const r = CL.recorder || {}, on = r.on;
+  const dot = r.recording ? 'rec' : on ? 'ok' : '';
+  const state = !r.available ? 'The recorder is missing. Reinstall LoLStat to add it.' : r.error ? r.error
+              : r.recording ? `Recording this game${r.this_game ? ' · ' + r.this_game + ' clip' + (r.this_game === 1 ? '' : 's') + ' so far' : ''}` : on ? 'Ready. Clips are recorded automatically in your next game.' : 'Clips are off.';
+  let h = `<div class="box"><div class="cl-head"><div><h2 style="margin:0">Clips</h2><div class="muted" style="font-size:12.5px"><span class="cl-dot ${dot}"></span>${esc(state)}</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">${on ? `<span class="muted" style="font-size:12px">Ctrl+Shift+C saves the last 30 seconds</span>` : ''}
+    <button class="btn" onclick="act('clip_folder')">Open folder</button><button class="btn" onclick="go('settings');setTimeout(()=>q('#clSettings').scrollIntoView({behavior:'smooth'}),80)">Clip settings</button>
+    <button class="btn ${on?'':'gold'}" onclick="act('setting',{name:'clips_on'}).then(loadClips)">${on ? 'Turn off' : 'Turn on clips'}</button></div></div>
+    <div class="cl-filters">${CL_FILTERS.map(([k,l])=>`<button class="${CL_FILTER===k?'on':''}" onclick="CL_FILTER='${k}';drawClips()">${l}</button>`).join('')}</div></div>`;
+  const list = (CL.clips || []).filter(clMatch); CL_LIST = list;
+  if (!(CL.clips || []).length){
+    h += `<div class="sd-hero"><h3>Your best moments, saved for you</h3><p>${on ? 'Play a game. Kills, multikills, aces, objective steals and your wins are clipped automatically, with game sound.' : 'Turn on clips and LoLStat records your kills, multikills, aces, objective steals and wins automatically, with game sound, using your graphics card so your game stays smooth.'}</p>
+      <div class="sd-steps"><div><b>Automatic</b>Clips are cut the moment something happens. Back-to-back kills become one clip.</div><div><b>Any time</b>Press Ctrl+Shift+C in game to save the last 30 seconds.</div><div><b>Yours</b>Saved on your PC in Videos\\LoLStat. Nothing is uploaded.</div></div>
+      ${on ? '' : `<button class="btn gold" style="margin-top:18px" onclick="act('setting',{name:'clips_on'}).then(loadClips)">Turn on clips</button>`}</div>`;
+  } else if (!list.length) h += `<div class="box" style="margin-top:16px"><div class="muted">No clips match this filter.</div></div>`;
+  else {
+    const games = []; list.forEach(c => { let g = games.find(x => x.name === c.game); if (!g) games.push(g = {name:c.game, clips:[]}); g.clips.push(c); });
+    h += games.map(g => `<div class="cl-game"><h3>${esc(g.name)}</h3><div class="cl-grid">${g.clips.map(c => `<button class="cl-card" onclick="clPlay('${esc(c.path).replace(/'/g,"\\'")}')">
+      <div class="cl-thumb" style="background-image:url('${c.thumb ? clUrl('/clipthumb', c.thumb) : ''}')">${/Double|Triple|Quadra|Penta|steal|Ace/.test(c.title) ? `<span class="tag">${esc(c.title)}</span>` : ''}<span class="len">${clLen(c.seconds)}</span><span class="play"><i>▶</i></span></div>
+      <div class="cl-info"><b>${esc(c.title)}</b><div class="muted">${esc(c.champion || '')}${c.game_time ? ' · ' + clLen(c.game_time) + ' in game' : ''} · ${c.mb} MB</div></div></button>`).join('')}</div></div>`).join('');
+  }
+  el.innerHTML = h;
+}
+function clPlay(path){
+  const c = CL_LIST.find(x => x.path === path); if (!c) return; CL_CUR = c;
+  const v = q('#clVideo'); v.src = clUrl('/clip', c.path); v.play().catch(()=>{});
+  q('#clTitle').textContent = c.title; q('#clMeta').textContent = `${c.champion || ''} · ${c.game}${c.game_time ? ' · ' + clLen(c.game_time) + ' in game' : ''} · ${clLen(c.seconds)} · ${c.mb} MB`;
+  q('#clModal').classList.add('on');
+}
+function clStep(d){ const i = CL_LIST.indexOf(CL_CUR); const n = CL_LIST[(i + d + CL_LIST.length) % CL_LIST.length]; if (n) clPlay(n.path); }
+function clClose(){ const v = q('#clVideo'); v.pause(); v.removeAttribute('src'); v.load(); q('#clModal').classList.remove('on'); }
+async function clDelete(c){ if (!c || !confirm(`Delete "${c.title}"?`)) return; clClose(); await act('clip_delete', {path:c.path}); loadClips(); }
+document.addEventListener('keydown', e => { if (!q('#clModal').classList.contains('on')) return; if (e.key === 'Escape') clClose(); if (e.key === 'ArrowRight') clStep(1); if (e.key === 'ArrowLeft') clStep(-1); });
+let clSig = '';
+function drawClipSettings(st){
+  const r = st.clips || {}; const sig = JSON.stringify([r.on, r.recording, r.this_game, r.error]);
+  if (sig !== clSig){ clSig = sig; if (page === 'clips') loadClips(); }
+  const set = (id, v) => { const e = q(id); if (e && document.activeElement !== e) e.value = String(v); };
+  set('#clQuality', st.settings.clip_quality || 'high'); set('#clBefore', st.settings.clip_before || 12); set('#clAfter', st.settings.clip_after || 5); set('#clMax', st.settings.clip_max_gb || 20);
+  const k = q('#clKinds'); if (k) k.innerHTML = toggleRow(st, [['clip_kills','Kills','Every champion you kill'],['clip_multikills','Multikills','Double, triple, quadra and penta kills'],['clip_aces','Aces','When your team wipes theirs'],['clip_objectives','Objectives and steals','Baron, dragon, herald and turrets you take'],['clip_game_end','Victory or defeat','The last seconds of every game'],['clip_deaths','Deaths','Learn from them, or laugh'],['clip_assists','Assists','Kills you helped with'],['clip_sound','Game sound','Record what you hear in game'],['clip_full_game','Keep the whole game','Also saves your full game (large files)']]);
+}
+['#clQuality','#clBefore','#clAfter','#clMax'].forEach(id => { const e = q(id); if (e) e.onchange = () => act('set_value', {name:{'#clQuality':'clip_quality','#clBefore':'clip_before','#clAfter':'clip_after','#clMax':'clip_max_gb'}[id], value: id === '#clQuality' ? e.value : +e.value}); });
+'''
+
+
+def extend8(html):
+    html = html.replace('''  <button class="nav" data-page="fun"''', NAV8 + '''  <button class="nav" data-page="fun"''', 1)
+    html = html.replace('''  <!-- GAMES -->''', PAGE8 + '''  <!-- GAMES -->''', 1)
+    a = '''    <p class="fine" style="margin-top:18px" id="about"></p>'''
+    assert html.count(a) == 1
+    html = html.replace(a, SETTINGS8 + "\n" + a, 1)
+    html = html.replace('''/* champ select */''', CSS8 + '''/* champ select */''', 1)
+    html = html.replace('''let lastTick = 0;''', JS8 + '''let lastTick = 0;''', 1)
+    html = html.replace('''drawSdHome(st); drawSdSettings(st); ovLookFill(st);''', '''drawSdHome(st); drawSdSettings(st); ovLookFill(st); drawClipSettings(st);''', 1)
+    html = html.replace('''if (p==='showdown'){ drawSD(); loadSD(); } }''', '''if (p==='showdown'){ drawSD(); loadSD(); } if (p==='clips'){ drawClips(); loadClips(); } }''', 1)
+    html = html.replace('''live:'Live game', showdown:'Party Showdown',''', '''live:'Live game', showdown:'Party Showdown', clips:'Clips',''', 1)
+    html = html.replace('''['showdown','Party Showdown'],''', '''['showdown','Party Showdown'],['clips','Clips'],''', 1)
+    html = html.replace('''['In-game panel look and size','#ovLook'],''', '''['In-game panel look and size','#ovLook'],['Clip settings','#clSettings'],''', 1)
+    return html
