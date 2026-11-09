@@ -11,7 +11,8 @@ information from the League client and game on your PC through the local
 interfaces they provide. It does not change game files or memory.
 During ARAM Mayhem, if turned on in Settings, it reads augment card names
 from the game window on your screen with Windows' built-in text
-recognition. Screenshots are never saved or sent anywhere.
+recognition. Screenshots are never sent anywhere. If you turn on Save card
+captures, pictures of the card screen are saved on your PC only.
 Once a game has started, it can show other players' ranks and recent
 match results from their League profiles (the same public info the client
 shows). It doesn't reveal names hidden in champion select.

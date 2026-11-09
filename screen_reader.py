@@ -545,6 +545,17 @@ class ScreenReader:
                 cards.append((aid, (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2))
         self._slot_sigs, self._slot_read_t = sigs, now
         self._slot_last_ok = len(cards) >= min(3, len(boxes))
+        ct = getattr(self, "_click_t", 0)
+        if ct and now - ct > 1.5 and now - getattr(self, "_last_offer_t", 0) > 1.5 and self.tracker.current:
+            self._click_t = 0                        # clicked a card or reroll, but nothing changed
+            self.capture("click-no-change", cards, None, boxes)
+        if self._slot_last_ok:
+            self._part_t = 0
+        elif not getattr(self, "_part_t", 0):
+            self._part_t = now
+        elif now - self._part_t > 1.2 and len(cards) > 0:
+            self._part_t = now + 30                  # some cards unreadable for a while
+            self.capture("cards-unreadable", cards, None, boxes)
         self.last_text = " | ".join(texts)
         self.svc.reader_info = dict(getattr(self.svc, "reader_info", {}) or {}, last_scan=time.strftime("%H:%M:%S"),
                                     cards_matched=[self.svc.aug_names.get(a, a) for a, _, _ in cards],
@@ -575,6 +586,8 @@ class ScreenReader:
         if True:
             if e[0] == "offer":
                 self._slot_sigs = []                 # new cards: start watching their name boxes fresh
+                self.capture("reroll" if box is None else "cards-found", [(a, x, y) for a, (x, y) in zip(e[1], e[2])])
+                self._last_offer_t = time.time()
                 old = getattr(self, "_known_tops", None) or []
                 tops = [None] * len(e[2]) if band or box is None else self._tops(e[2], box)
                 for i, (x, y) in enumerate(e[2]):        # same slot as before (a reroll): same card top
@@ -604,6 +617,7 @@ class ScreenReader:
                         time.sleep(0.6)
                         continue
                     self._status("Waiting for a game")
+                    self._cap_n = 0                  # captures are limited per game
                 else:
                     hwnd, rect = league_window()
                     self.game_rect = rect
@@ -651,6 +665,11 @@ class ScreenReader:
                             lv, gt = int(live.get("level") or 0), float(live.get("time") or 0)
                             if lv > getattr(self, "_last_level", lv) or gt < 75:
                                 self._burst_until = max(self._burst_until, time.time() + LEVEL_BURST)
+                            if lv > getattr(self, "_last_level", lv):
+                                self._levelup_t = time.time()
+                            if getattr(self, "_levelup_t", 0) and time.time() - self._levelup_t > 5 and not self.tracker.current:
+                                self._levelup_t = 0
+                                self.capture("levelup-no-cards", cards, None)
                             self._last_level = lv
                             if time.time() < self._burst_until:
                                 pause = SCAN_CLICK
@@ -715,6 +734,45 @@ class ScreenReader:
         except Exception:
             pass
 
+    # ---- card captures: what the reader saw at the moments that matter (Settings, off by default)
+    CAPTURE_LIMIT = 60          # per game
+    CAPTURE_KEEP = 200          # files kept in the folder (oldest are removed)
+
+    def capture(self, why, cards=None, img=None, boxes=None):
+        """Save the game window and what was read, if 'Save card captures' is on."""
+        if not self.settings.get("capture_cards") or not getattr(self, "game_rect", None):
+            return
+        n = getattr(self, "_cap_n", 0)
+        if n >= self.CAPTURE_LIMIT:
+            return
+        self._cap_n = n + 1
+        threading.Thread(target=self._capture, args=(why, list(cards or []), img, boxes), daemon=True).start()
+
+    def _capture(self, why, cards, img, boxes):
+        try:
+            import json as _json
+            import os
+            from PIL import ImageGrab
+            os.makedirs(self.snap_dir, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
+            name = f"{stamp}-{why}"
+            shot = img or ImageGrab.grab(bbox=self.game_rect, all_screens=True)
+            shot.save(os.path.join(self.snap_dir, name + ".png"))
+            info = {"why": why, "time": stamp, "game_window": self.game_rect, "status": self.svc.scanner_status,
+                    "cards_matched": [self.svc.aug_names.get(a, a) for a, _, _ in cards],
+                    "card_positions": [(x, y) for _, x, y in cards],
+                    "watched_boxes": boxes, "text_read": self.last_text,
+                    "offer_on_screen": [self.svc.aug_names.get(a, a) for a in (self.tracker.current or {}).get("ids", [])],
+                    "ocr_language": getattr(self.ocr, "lang_tag", "?"), "game_language": self.svc.locale,
+                    "level": (self.svc.live or {}).get("level"), "game_time": (self.svc.live or {}).get("time")}
+            with open(os.path.join(self.snap_dir, name + ".json"), "w", encoding="utf-8") as f:
+                _json.dump(info, f, indent=1, ensure_ascii=False)
+            files = sorted(x for x in os.listdir(self.snap_dir) if x[:2].isdigit())
+            for old in files[:-self.CAPTURE_KEEP]:
+                os.remove(os.path.join(self.snap_dir, old))
+        except Exception as e:
+            self.log(f"Card capture failed: {e}")
+
     def snapshot(self):
         """Save what LoLStat sees right now (whole game window + the text it read). Returns the folder."""
         import os
@@ -752,6 +810,7 @@ class ScreenReader:
             if down and not was_down and self.tracker.current:
                 u.GetCursorPos(ctypes.byref(pt))
                 self.tracker.click(pt.x, pt.y, time.time())
+                self._click_t = time.time()
                 self._burst_until = time.time() + FAST_AFTER_CLICK
                 self._wake.set()                     # read the screen right now (a reroll is coming)
             was_down = down

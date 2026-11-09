@@ -1,5 +1,12 @@
 # LoLStat patch notes
 
+## LoLStat 4.0.2 (2026-11-09)
+
+Card captures, to help make augment card reading perfect.
+
+- **Card captures:** New in Settings: Save card captures. When it's on, LoLStat saves a picture of the augment cards and what it read when cards appear, after rerolls and when a card couldn't be read. They stay on your PC in Documents\LoLStat\Card captures.
+- **Ctrl+Shift+S:** In game, saves a capture any time, now in the same folder.
+
 ## LoLStat 4.0.1 (2026-11-08)
 
 Patch notes in the app and on every release.

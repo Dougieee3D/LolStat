@@ -12,6 +12,15 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.0.2",
+        "date": "2026-11-09",
+        "summary": "Card captures, to help make augment card reading perfect.",
+        "changes": [
+            ("Card captures", "New in Settings: Save card captures. When it's on, LoLStat saves a picture of the augment cards and what it read when cards appear, after rerolls and when a card couldn't be read. They stay on your PC in Documents\\LoLStat\\Card captures."),
+            ("Ctrl+Shift+S", "In game, saves a capture any time, now in the same folder."),
+        ],
+    },
+    {
         "version": "4.0.1",
         "date": "2026-11-08",
         "summary": "Patch notes in the app and on every release.",
