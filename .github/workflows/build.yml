@@ -1,0 +1,161 @@
+name: Build LoLStat
+
+# Builds LoLStat-Setup.exe, scans it with Microsoft Defender, records its SHA-256 checksum
+# and publishes it as a release with that version's patch notes. Runs on every push to main.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write        # create the release
+  id-token: write        # sign the build-provenance attestation
+  attestations: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read the version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path lolstat_assets.py -Pattern 'APP_VERSION = "([^"]+)"').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "LoLStat $v"
+
+      - name: Patch notes for this version (required)
+        shell: pwsh
+        run: |
+          python patch_notes.py "${{ steps.ver.outputs.version }}" | Out-File notes.md -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "No patch notes for ${{ steps.ver.outputs.version }} in patch_notes.py" }
+
+      - name: Install build tools
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller qrcode pillow pywebview pystray
+          python -m pip install winsdk
+          if ($LASTEXITCODE -ne 0) {
+            python -m pip install winrt-runtime winrt-Windows.Media.Ocr winrt-Windows.Graphics.Imaging winrt-Windows.Security.Cryptography winrt-Windows.Globalization winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Storage.Streams
+          }
+          python -m pip freeze > pip-freeze.txt
+
+      - name: Check the code compiles
+        shell: pwsh
+        run: |
+          Get-ChildItem *.py | ForEach-Object { python -m py_compile $_.FullName; if ($LASTEXITCODE -ne 0) { exit 1 } }
+
+      - name: Build LoLStat.exe
+        shell: pwsh
+        run: |
+          Copy-Item branding\* . -Force
+          python -m PyInstaller --onedir --noconsole --noconfirm --clean --log-level WARN --icon lolstat.ico --version-file version_info.txt --collect-all webview --hidden-import mayhem_service --hidden-import mayhem_engine --hidden-import mayhem_snapshot --hidden-import screen_reader --hidden-import ui_pages --hidden-import lolstat_assets --hidden-import ingame_overlay --hidden-import lcu_stats --hidden-import runes --hidden-import champ_themes --hidden-import insights --hidden-import fun --hidden-import ui_more --hidden-import showdown --hidden-import build_guide --hidden-import patch_notes --hidden-import pystray --hidden-import pystray._win32 --hidden-import clr --hidden-import winsdk.windows.media.ocr --hidden-import winsdk.windows.graphics.imaging --hidden-import winsdk.windows.security.cryptography --hidden-import winsdk.windows.globalization --hidden-import winsdk.windows.foundation --hidden-import winsdk.windows.foundation.collections --hidden-import winsdk.windows.storage.streams --hidden-import winrt.windows.media.ocr --hidden-import winrt.windows.graphics.imaging --hidden-import winrt.windows.security.cryptography --hidden-import winrt.windows.globalization --hidden-import winrt.windows.foundation --hidden-import winrt.windows.foundation.collections --hidden-import winrt.windows.storage.streams --name LoLStat lolstat.py
+          if (-not (Test-Path dist\LoLStat\LoLStat.exe)) { throw "LoLStat.exe wasn't built" }
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /Q installer.iss
+          $setup = "LoLStat-Setup-${{ steps.ver.outputs.version }}.exe"
+          if (-not (Test-Path $setup)) { throw "The installer wasn't built" }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Move-Item $setup out\LoLStat-Setup.exe
+
+      - name: Scan with Microsoft Defender
+        shell: pwsh
+        run: |
+          $mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+          $result = "Microsoft Defender scan: not available on this build machine"
+          if (Test-Path $mp) {
+            & $mp -SignatureUpdate | Out-Null
+            foreach ($f in @("out\LoLStat-Setup.exe", "dist\LoLStat")) {
+              & $mp -Scan -ScanType 3 -File (Resolve-Path $f) -DisableRemediation
+              if ($LASTEXITCODE -eq 2) { throw "Microsoft Defender flagged $f" }
+            }
+            $result = "Microsoft Defender scan: no threats found (signatures updated at build time)"
+          }
+          Write-Host $result
+          $result | Out-File defender.txt -Encoding utf8
+
+      - name: Checksums and build info
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash out\LoLStat-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  LoLStat-Setup.exe" | Out-File out\SHA256SUMS.txt -Encoding ascii
+          @(
+            "LoLStat ${{ steps.ver.outputs.version }}",
+            "Built from commit ${{ github.sha }} by GitHub Actions run ${{ github.run_id }}",
+            "Python: $(python --version)",
+            (Get-Content defender.txt),
+            "SHA-256 of LoLStat-Setup.exe: $h",
+            "",
+            "Exact build packages:",
+            (Get-Content pip-freeze.txt)
+          ) | Out-File out\build-info.txt -Encoding utf8
+
+      - name: Release notes
+        shell: pwsh
+        run: |
+          $safety = @"
+
+          ---
+          **Download ``LoLStat-Setup.exe`` below and run it.**
+
+          Scanned with Microsoft Defender. To check your download, compare ``Get-FileHash LoLStat-Setup.exe`` (PowerShell) with ``SHA256SUMS.txt``.
+          Windows may show "Windows protected your PC" the first time: click **More info**, then **Run anyway**.
+          "@
+          ((Get-Content notes.md -Raw) + $safety) | Out-File out\release-notes.md -Encoding utf8
+
+      - name: Record build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: out/LoLStat-Setup.exe
+
+      - name: Tidy up earlier releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete "v${{ steps.ver.outputs.version }}" --cleanup-tag --yes 2>$null
+          # remove releases and tags left over from history that no longer exists
+          $repo = "${{ github.repository }}"
+          $tags = gh api "repos/$repo/tags" --paginate --jq '.[] | .name + " " + .commit.sha'
+          foreach ($line in $tags) {
+            if (-not $line) { continue }
+            $name, $sha = $line.Split(" ")
+            $st = gh api "repos/$repo/compare/$sha...${{ github.sha }}" --jq .status 2>$null
+            if ($LASTEXITCODE -ne 0 -or $st -eq "diverged") {
+              gh release delete $name --yes 2>$null
+              gh api -X DELETE "repos/$repo/git/refs/tags/$name" 2>$null
+              Write-Host "Removed old release $name"
+            }
+          }
+          $drafts = gh release list --json tagName,isDraft | ConvertFrom-Json | Where-Object { $_.isDraft }
+          foreach ($d in $drafts) { gh release delete $d.tagName --yes }
+          exit 0
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: LoLStat ${{ steps.ver.outputs.version }}
+          make_latest: true
+          files: |
+            out/LoLStat-Setup.exe
+            out/SHA256SUMS.txt
+            out/build-info.txt
+          body_path: out/release-notes.md

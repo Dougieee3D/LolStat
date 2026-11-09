@@ -1,0 +1,48 @@
+LoLStat - Terms of Use
+======================
+
+Please read before installing.
+
+1. What LoLStat does
+LoLStat runs on your PC next to League of Legends. It can accept match
+ready-checks for you, lets you control that from your phone over your own
+Wi-Fi, and suggests ARAM Mayhem item builds and augment rankings. It reads
+information from the League client and game on your PC through the local
+interfaces they provide. It does not change game files or memory.
+During ARAM Mayhem, if turned on in Settings, it reads augment card names
+from the game window on your screen with Windows' built-in text
+recognition. Screenshots are never saved or sent anywhere.
+Once a game has started, it can show other players' ranks and recent
+match results from their League profiles (the same public info the client
+shows). It doesn't reveal names hidden in champion select.
+The Friends page shows your League friends' ranks and recent results, looked
+up through your own League client. Champion themes download splash art
+from Riot's Data Dragon and keep it on your PC.
+LoLStat keeps an archive of your own recent games, records, goals and
+journal notes on your PC to build your stats. It can show Windows
+notifications, and if you turn on Tilt guard's queue pause, it cancels
+matchmaking during a break you chose. Uninstalling removes LoLStat's item
+sets and rune page from League if League is open.
+
+2. Your account
+LoLStat is an independent app. Riot Games' rules for third-party apps say
+apps shouldn't take actions for you; auto-accept is not named in those
+rules, and similar features exist in popular apps, but there is some risk.
+You use LoLStat at your own risk and are responsible for your account.
+
+3. Data
+LoLStat downloads public game data from Riot's Data Dragon and Mayhem data
+from the DeepARAM project (github.com/nicothomas02/DeepARAM, MIT License,
+Copyright (c) 2026 Nico Thomas). Augment rankings are shown as letter grades
+only. LoLStat does not collect or send your personal data anywhere. Your
+phone link key is stored only on your PC.
+
+4. No warranty
+LoLStat is provided "as is", without warranty of any kind. The authors are
+not liable for any claim, damage or other liability arising from its use.
+
+5. Riot Games
+LoLStat isn't endorsed by Riot Games and doesn't reflect the views or
+opinions of Riot Games or anyone officially involved in producing or
+managing Riot Games properties. Riot Games, and all associated properties
+are trademarks or registered trademarks of Riot Games, Inc.

@@ -1,0 +1,6 @@
+pywebview
+pillow
+qrcode
+pystray
+winsdk; sys_platform == "win32"
+pyinstaller
