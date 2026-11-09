@@ -126,6 +126,19 @@ class Scaled:
         return self.cv.configure(**kw)
 
 
+def _wrap(text, width):
+    words, lines, cur = text.split(), [], ""
+    for w in words:
+        if len(cur) + len(w) + 1 > width and cur:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = (cur + " " + w).strip()
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 def _round(cv, x0, y0, x1, y1, r, **kw):
     pts = [x0 + r, y0, x1 - r, y0, x1, y0, x1, y0 + r, x1, y1 - r, x1, y1, x1 - r, y1,
            x0 + r, y1, x0, y1, x0, y1 - r, x0, y0 + r, x0, y0]
@@ -316,6 +329,47 @@ class InGameLayer(threading.Thread):
             return folder
         except Exception as e:
             self.log(f"Snapshot failed: {e}")
+
+    def _set_page(self, key):
+        self.settings["panel_page"] = key
+        self.save_settings()
+        self._draw_panel(force=True)
+
+    def _live_page(self, items, lb, y, W):
+        """Live build: what to buy next to stay ahead of what they're building. Changes as the game goes."""
+        head = lambda t, col=None: items.append(("text", 18, y + 6, t, col or MUTED, ("Segoe UI Semibold", 8), "w"))
+        if not lb:
+            items.append(("text", 18, y + 4, "Shows once your game has started.", MUTED, ("Segoe UI", 9), "w"))
+            return y + 24
+        if lb.get("done") or not lb.get("next"):
+            items.append(("text", 18, y + 4, "Your build is complete.", TEXT, ("Segoe UI", 9), "w"))
+            y += 24
+        else:
+            head("Next buy", GOLD); y += 16
+            af = lb.get("afford") or {}
+            items.append(("item", y, dict(lb["next"], why=af.get("text", ""), why_color=TEAL if af.get("now") else None))); y += 30
+            if lb.get("then"):
+                head("Then"); y += 16
+                for it in lb["then"]:
+                    items.append(("item", y, dict(it, why=""))); y += 30
+        if lb.get("reasons"):
+            head("Why"); y += 16
+            for r in lb["reasons"]:
+                for line in _wrap(r, 48)[:2]:
+                    items.append(("text", 18, y + 4, line, TEXT, ("Segoe UI", 8), "w")); y += 14
+                y += 2
+        a = lb.get("ahead")
+        if a:
+            y += 4
+            head("Your items vs theirs"); y += 16
+            d = a["diff"]
+            txt = (f"{d:+,} gold ahead of their average" if d >= 0 else f"{-d:,} gold behind their average")
+            items.append(("text", 18, y + 4, txt, TEAL if d >= 0 else "#ff8a8a", ("Segoe UI Semibold", 9), "w")); y += 16
+            t = lb.get("threat")
+            if t:
+                items.append(("text", 18, y + 4, f"Biggest threat: {t['champion']} ({t['items_gold']:,}g" + (f", {t['kda']})" if t.get("kda") else ")"),
+                              MUTED, ("Segoe UI", 8), "w")); y += 16
+        return y + 6
 
     def _toggle(self):
         self.open = not self.open
@@ -566,8 +620,16 @@ class InGameLayer(threading.Thread):
 
     def _draw_panel(self, force=False):
         st = self.state or {}
-        sig = json.dumps([(st.get("champion") or {}).get("name"), st.get("builds_locked"), self.build_idx,
-                          [[b.get("style"), [i.get("id") for i in b.get("items") or []]] for b in st.get("builds") or []]])
+        S = self.settings
+        live_on = S.get("live_build_on", True)
+        page = S.get("panel_page", "builds") if live_on else "builds"
+        stat_keys = [k for k in ("kda", "cs", "csmin", "kp", "gold", "level") if S.get("ov_show_" + k)]
+        sig = json.dumps([(st.get("champion") or {}).get("name"), st.get("builds_locked"), self.build_idx, page, live_on,
+                          [[b.get("style"), [i.get("id") for i in b.get("items") or []]] for b in st.get("builds") or []],
+                          st.get("live_build") if page == "live" else None,
+                          [st.get("stats"), st.get("level"), st.get("game_time", 0) // 60] if stat_keys else None,
+                          [c.get("name") for c in st.get("chosen") or []] if S.get("ov_show_augments") else None,
+                          [S.get("ov_show_steps", True), S.get("ov_show_buynow", True)] + stat_keys], default=str)
         if not force and sig == getattr(self, "_panel_sig", None):
             return                      # nothing changed: leave the panel exactly as it is
         self._panel_sig = sig
@@ -579,12 +641,29 @@ class InGameLayer(threading.Thread):
         # builds only, and they stay the same all game (they match your item sets)
         champ = (st.get("champion") or {}).get("name", "LoLStat")
         items.append(("text", 16, y, champ, TEXT, ("Segoe UI Semibold", 11), "w"))
-        if st.get("builds_locked"):
+        if st.get("builds_locked") and page == "builds":
             items.append(("text", W - 40, y, "locked for this game", MUTED, ("Segoe UI", 7), "e"))
         items.append(("close", W - 20, y))
         y += 20
+        # optional live stats line (Settings > In-game overlay)
+        stt = st.get("stats") or {}
+        if stat_keys and stt:
+            mins = max(1.0, float(st.get("game_time") or 0) / 60)
+            bits = {"kda": f"{stt.get('k', 0)}/{stt.get('d', 0)}/{stt.get('a', 0)}", "cs": f"{stt.get('cs', 0)} CS",
+                    "csmin": f"{stt.get('cs', 0) / mins:.1f} CS/min", "kp": f"KP {stt.get('kp', 0)}%",
+                    "gold": f"{int(stt.get('gold', 0)):,}g", "level": f"Lv {st.get('level') or ''}"}
+            items.append(("text", 16, y + 2, "  ·  ".join(bits[k] for k in stat_keys), TEAL, ("Segoe UI Semibold", 8), "w"))
+            y += 18
+        if S.get("ov_show_augments") and st.get("chosen"):
+            names = ", ".join(c.get("name", "") for c in st.get("chosen"))
+            items.append(("text", 16, y + 2, (names if len(names) < 52 else names[:50] + "…"), MUTED, ("Segoe UI", 8), "w"))
+            y += 18
+        if live_on:
+            items.append(("pages", y, page)); y += 28
         builds = st.get("builds") or []
-        if builds:
+        if page == "live":
+            y = self._live_page(items, st.get("live_build"), y, W)
+        elif builds:
             self.build_idx = min(self.build_idx, len(builds) - 1)
             items.append(("tabs", y, len(builds))); y += 28
             b = builds[self.build_idx]
@@ -595,7 +674,7 @@ class InGameLayer(threading.Thread):
                 def short(xs, room=44):
                     t = ", ".join(x["name"] for x in xs)
                     return t if len(t) <= room else t[:room - 1].rstrip(", ") + "…"
-                if g["start"]["items"] and not owned:
+                if g["start"]["items"] and not owned and S.get("ov_show_steps", True):
                     head("Start: " + short(g["start"]["items"])); y += 16
                     if g["first_back"]["items"]:
                         head("First back: " + short(g["first_back"]["items"], 38)); y += 16
@@ -610,7 +689,7 @@ class InGameLayer(threading.Thread):
                     head("End game"); y += 16
                     for it in g["late"]:
                         items.append(("item", y, it)); y += 30
-                urgent = [x for x in g["situational"] if x.get("urgent")][:2] or g["situational"][:1]
+                urgent = ([x for x in g["situational"] if x.get("urgent")][:2] or g["situational"][:1]) if S.get("ov_show_buynow", True) else []
                 if urgent:
                     head(("Buy now" if urgent[0].get("urgent") else "Situational")); y += 16
                     for x in urgent:
@@ -664,6 +743,17 @@ class InGameLayer(threading.Thread):
                                    font=("Segoe UI Semibold" if on else "Segoe UI", 9))
                     self.hit.append((x, yy, x + tw, yy + 22, lambda i=i: self._set_build(i)))
                     x += tw + 4
+            elif k == "pages":
+                _, yy, cur = it
+                x = 14
+                for key, label in (("builds", "Builds"), ("live", "Live build")):
+                    tw = 14 + 6.3 * len(label)
+                    on = key == cur
+                    _round(cv, x, yy, x + tw, yy + 22, 11, fill=GOLD if on else EDGE, outline="")
+                    cv.create_text(x + tw / 2, yy + 11, text=label, fill="#0c1220" if on else MUTED,
+                                   font=("Segoe UI Semibold", 9))
+                    self.hit.append((x, yy, x + tw, yy + 22, lambda key=key: self._set_page(key)))
+                    x += tw + 6
             elif k == "item":
                 _, yy, itm = it
                 ic = self._icon(itm.get("icon"))
@@ -675,7 +765,7 @@ class InGameLayer(threading.Thread):
                                font=("Segoe UI Semibold", 9), anchor="w")
                 why = itm.get("why", "")
                 why = why if len(why) < 50 else why[:48] + "…"
-                cv.create_text(48, yy + 19, text=why, fill=MUTED, font=("Segoe UI", 7), anchor="w")
+                cv.create_text(48, yy + 19, text=why, fill=itm.get("why_color") or MUTED, font=("Segoe UI", 7), anchor="w")
             elif k == "chip":
                 _, x, yy, c, wtxt = it
                 _round(cv, x, yy, x + wtxt, yy + 22, 7, fill="#181b22", outline=EDGE)

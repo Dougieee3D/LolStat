@@ -1,7 +1,7 @@
 ; LoLStat installer (Inno Setup 6). The builder compiles this automatically.
 
 #define MyAppName "LoLStat"
-#define MyAppVersion "4.1.0"
+#define MyAppVersion "4.2.0"
 #define MyAppExe "LoLStat.exe"
 #define OldAppId "{8F3C2A51-6B7D-4E2A-9C41-2D5E7A1B9F60}"
 
@@ -65,6 +65,8 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""{#MyAppName}"""; Flags: runhidden
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""{#MyAppName}"" dir=in action=allow program=""{app}\{#MyAppExe}"" enable=yes profile=private"; Flags: runhidden
 Filename: "{app}\{#MyAppExe}"; Description: "Launch {#MyAppName} now"; Flags: nowait postinstall skipifsilent
+; updates from inside LoLStat install quietly, then reopen LoLStat on the new version
+Filename: "{app}\{#MyAppExe}"; Parameters: "--show"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [UninstallRun]
 ; remove LoLStat's item sets and rune page from League (if League is open)

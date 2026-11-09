@@ -12,6 +12,17 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.2.0",
+        "date": "2026-11-09",
+        "summary": "Live build, a cleaner Settings, panel toggles and automatic updates.",
+        "changes": [
+            ("Live build", "A new page in the in-game panel and in the app. It watches every player's items, your items, gold and augments as the game goes, and tells you what to buy next to stay ahead and do the most damage, with the reasons why (like \"Malphite and Ornn are stacking armor: Lord Dominik's Regards cuts through it\"). Also shows whether your items are ahead of theirs, their biggest threat and what each enemy is building. Your locked builds and item sets don't change."),
+            ("In-game panel", "Switch between Builds and Live build at the top of the panel. Choose what else it shows in Settings: KDA, CS, CS per minute, kill participation, gold, level, your augments, start and first back, and buy now picks."),
+            ("Settings", "Settings now has its own pages: General, Automation, In-game overlay, Clips, Look, Notifications, Party Showdown, Backup & safety, and Help & about. Search still jumps straight to any setting."),
+            ("Automatic updates", "LoLStat checks for new versions when it opens. Click Update now and it downloads, checks and installs the update, then reopens on the new version. You can also have updates install by themselves, or check any time in Settings > General."),
+        ],
+    },
+    {
         "version": "4.1.0",
         "date": "2026-11-09",
         "summary": "Clips: your best moments recorded automatically.",

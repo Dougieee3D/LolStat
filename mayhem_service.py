@@ -208,6 +208,8 @@ class MayhemService:
                 "skin": int(me.get("skinID") or 0),
                 "players": [{"riotId": p.get("riotId") or p.get("summonerName"), "champion": self._resolve(p),
                              "team": "ally" if p.get("team") == team else "enemy", "isBot": p.get("isBot", False),
+                             "k": (p.get("scores") or {}).get("kills", 0), "d": (p.get("scores") or {}).get("deaths", 0),
+                             "a": (p.get("scores") or {}).get("assists", 0), "level": p.get("level", 0),
                              "me": p is me} for p in players],
             }
         except Exception:
@@ -222,6 +224,25 @@ class MayhemService:
                 "dead": bool(me.get("isDead")), "respawn": round(float(me.get("respawnTimer") or 0)),
                 "kp": round((k + a) / team_k * 100) if team_k else 0,
                 "kda": round((k + a) / max(1, d), 2), "gold": int(ap.get("currentGold") or 0)}
+
+    def live_build_view(self):
+        """The Live build page: worked out at most every 1.5 s, and only when something changed."""
+        if not self.live or not self.settings.get("live_build_on", True):
+            return None
+        lv = self.live
+        sig = (tuple(sorted(map(str, lv.get("owned") or []))), repr(sorted((k, tuple(map(str, v))) for k, v in (lv.get("enemy_items") or {}).items())),
+               tuple(self.chosen), int((lv.get("stats") or {}).get("gold") or 0) // 50, lv.get("champion"))
+        c = getattr(self, "_lb", None)
+        if c and (c[0] == sig or time.time() - c[2] < 1.5):
+            return c[1]
+        try:
+            import live_build
+            v = live_build.analyze(self)
+        except Exception as e:
+            self.log(f"Live build: {e}")
+            v = c[1] if c else None
+        self._lb = (sig, v, time.time())
+        return v
 
     def manual_pick(self, aid):
         """Picked from the app's card pop-up."""
@@ -773,6 +794,7 @@ class MayhemService:
                 "unconfirmed": {"cards": [self.aug_view(i) for i in self.unconfirmed["ids"]]} if self.unconfirmed else None,
                 "builds": self.builds(),
                 "builds_locked": bool(live and getattr(self, "locked", None) and self.locked.get("key") == self.game_key),
+                "live_build": self.live_build_view(),
                 "rank_source": "champ" if cr else "overall",
                 "mode": self.mode,
                 "runes": self.rune_page(champ),
@@ -790,6 +812,7 @@ class MayhemService:
                 "toast": self.toast if self.toast and time.time() - self.toast["t"] < 8 else None,
                 "champ_date": self._fmt_date(self.champ_tiers.get("date", "")),
                 "stats": (live or {}).get("stats"),
+                "game_time": (live or {}).get("time", 0),
                 "hotkeys": getattr(self, "hotkey_status", ""),
                 "combos": self.combos(),
                 "history": self.history[:20],

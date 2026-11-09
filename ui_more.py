@@ -249,7 +249,7 @@ function drawQol(st){
 const toggleRow = (st, rows) => rows.map(([k,t,d])=>`<label class="chk"><input type="checkbox" ${st.settings[k]?'checked':''} onchange="act('setting',{name:'${k}'})"><div><b>${t}</b><span>${d}</span></div></label>`).join('');
 function drawSetQol(st){
   const sig = JSON.stringify([st.settings, st.mayhem.hotkeys]);
-  if (q('#setQol').dataset.sig === sig) return; q('#setQol').dataset.sig = sig;
+  if (!q('#setNotify') || window._setQolSig === sig) return; window._setQolSig = sig;
   q('#setNotify').innerHTML = toggleRow(st, [['notify','Windows notifications','Match found, post-game recap, friends online'],['notify_friends','Friends coming online','A pop-up when a friend logs in'],['dnd','Do not disturb','Pause all pop-ups'],['dnd_ranked','Quiet during ranked','Pause pop-ups in ranked games automatically']]);
   q('#setWindow').innerHTML = toggleRow(st, [['close_to_tray','Keep running in the tray when closed','Off: closing the window quits LoLStat completely. On: it keeps working in the tray'],['start_hidden','Start in the tray','Open hidden when Windows starts'],['show_on_league','Show when League opens','Bring LoLStat up when the client starts'],['perf_mode','Performance mode','Do less in the background while you play']]);
   q('#setA11y').innerHTML = toggleRow(st, [['colorblind','Colorblind-friendly colors','Blue and orange instead of green and red'],['reduce_motion','Reduce motion','Turn off animations']]);
@@ -1143,4 +1143,209 @@ def extend8(html):
     html = html.replace('''live:'Live game', showdown:'Party Showdown',''', '''live:'Live game', showdown:'Party Showdown', clips:'Clips',''', 1)
     html = html.replace('''['showdown','Party Showdown'],''', '''['showdown','Party Showdown'],['clips','Clips'],''', 1)
     html = html.replace('''['In-game panel look and size','#ovLook'],''', '''['In-game panel look and size','#ovLook'],['Clip settings','#clSettings'],''', 1)
+    return html
+
+
+# ====================================================================== Settings pages, updates, Live build page
+SETTINGS9 = r'''
+    <div class="box" style="max-width:860px;margin-top:16px" id="newSettings">
+      <h2>Updates</h2>
+      <div class="set"><div><b>LoLStat <span id="updCur"></span></b><p id="updState">Checking…</p></div><div style="display:flex;gap:8px"><button class="btn" id="updBtn" onclick="act('update_check')">Check now</button></div></div>
+      <div class="auto" id="setUpdate"></div>
+      <h2>Panel content</h2>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px">Choose what the in-game panel shows. Your builds are always there.</div>
+      <div class="auto" id="setPanel"></div>
+      <h2>Live build</h2>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px">A second page in the in-game panel (and in the app) that watches everyone's items and tells you what to buy next to stay ahead. Your locked builds stay as they are.</div>
+      <div class="auto" id="setLive"></div>
+      <div class="set"><div><b>Open the panel on</b><p>The page the in-game panel shows first.</p></div><select id="panelPage"><option value="builds">Builds</option><option value="live">Live build</option></select></div>
+    </div>'''
+
+NAV9 = r'''  <button class="nav" data-page="livebuild" aria-label="Live build"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span class="tip">Live build</span></button>
+'''
+
+PAGE9 = r'''
+  <!-- LIVE BUILD -->
+  <section class="page" id="p-livebuild"><div id="lbOut"></div></section>
+  <div class="modal" id="updModal" role="dialog" aria-modal="true" aria-labelledby="updTitle"><div class="sheet" style="max-width:640px">
+    <div style="display:flex;align-items:center;gap:12px"><img src="/logo.png" alt="" style="width:40px;height:40px;border-radius:10px"><div><h2 id="updTitle" style="margin:0"></h2><div class="muted" style="font-size:12.5px" id="updSub"></div></div></div>
+    <div id="updNotes" class="upd-notes"></div>
+    <div id="updProg" style="display:none"><div class="upd-bar"><i id="updBar"></i></div><div class="muted" style="font-size:12.5px;margin-top:6px" id="updProgText"></div></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px" id="updActs"><button class="btn" onclick="act('update_later');q('#updModal').classList.remove('on')">Later</button><button class="btn gold" onclick="act('update_install')">Update now</button></div>
+  </div></div>'''
+
+CSS9 = r'''
+/* settings pages */
+.sp-wrap{display:grid;grid-template-columns:220px 1fr;gap:20px;align-items:start}
+.snav{position:sticky;top:0;display:flex;flex-direction:column;gap:2px;padding:8px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.snav button{display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;border-radius:10px;font-weight:600;font-size:13.5px;color:var(--muted)}
+.snav button:hover{background:var(--raised);color:var(--text)}
+.snav button.on{background:color-mix(in srgb,var(--gold) 16%,transparent);color:var(--text);box-shadow:inset 3px 0 0 var(--gold)}
+.spage{display:none}.spage.on{display:block}
+.sp-head{margin:2px 0 14px}.sp-head h2{margin:0;font-size:22px}.sp-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.spage .box{max-width:none!important;margin-top:0!important;margin-bottom:16px}
+.spage .box h2{font-size:15px;margin:22px 0 6px;padding-top:18px;border-top:1px solid var(--line)}
+.spage .box > h2:first-child{margin-top:0;padding-top:0;border:0}
+@media (max-width:900px){.sp-wrap{grid-template-columns:1fr}.snav{position:static;flex-direction:row;flex-wrap:wrap}}
+/* update */
+.upd-notes{margin-top:14px;max-height:46vh;overflow:auto;font-size:13.5px;line-height:1.55}
+.upd-notes li{margin:6px 0}.upd-notes b{color:var(--gold)}
+.upd-bar{height:8px;border-radius:6px;background:var(--raised);overflow:hidden;margin-top:16px}.upd-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--gold2));transition:width .3s}
+#updPill{display:none;cursor:pointer;background:var(--gold);color:#0c1220;font-weight:700}
+/* live build page */
+.lb-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-top:16px}
+.lb-next{display:flex;align-items:center;gap:16px}
+.lb-next img{width:64px;height:64px;border-radius:12px;border:2px solid var(--gold)}
+.lb-next b{font-size:20px}.lb-afford{font-size:13px;margin-top:4px;color:var(--muted)}.lb-afford.now{color:var(--teal);font-weight:700}
+.lb-then{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.lb-then span{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;border-radius:10px;background:var(--raised);font-size:13px;font-weight:600}
+.lb-then img{width:30px;height:30px;border-radius:7px}
+.lb-why li{margin:6px 0;font-size:13.5px}
+.lb-ahead{font-size:26px;font-weight:800}.lb-ahead.up{color:var(--teal)}.lb-ahead.down{color:#ff8a8a}
+.lb-enemy{display:grid;grid-template-columns:140px 1fr 150px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.lb-enemy:last-child{border:0}.lb-enemy .its{display:flex;gap:4px;flex-wrap:wrap}.lb-enemy .its img{width:28px;height:28px;border-radius:6px}
+@media (max-width:900px){.lb-grid{grid-template-columns:1fr}}
+'''
+
+JS9 = r'''
+// ---------------- Settings: one page per topic
+const SET_PAGES = [
+  ['general','General','Window, startup, updates and game data','⚙'],
+  ['automation','Automation','Auto-accept, item sets and champ select','⚡'],
+  ['overlay','In-game overlay','The panel, grades on cards and Live build','▣'],
+  ['clips','Clips','Highlight recording','●'],
+  ['look','Look','Themes and accessibility','◐'],
+  ['notify','Notifications','Pop-ups and wellbeing','◔'],
+  ['showdown','Party Showdown','Best of 3 or best of 5','⚔'],
+  ['safety','Backup & safety','Backups, safe mode and cleanup','⛨'],
+  ['about','Help & about','Troubleshooting and version','?']];
+const SET_RULES = [[/^Auto-accept/,'automation'],[/^In-game overlay$|^In-game panel|^Read augment cards|^Hotkey|^Panel content|^Live build|^Open the panel/,'overlay'],
+  [/^Item sets in the League|^Champ select helpers|^Favorite champions/,'automation'],[/^Game data|^Window and performance|^Updates/,'general'],
+  [/^Appearance|^Champion themes|^Custom theme|^Accessibility/,'look'],[/^Notifications|^Wellbeing/,'notify'],[/^Party Showdown/,'showdown'],
+  [/^Backup and restore|^Safety/,'safety'],[/^Clips/,'clips']];
+let setPage = (()=>{ try { return localStorage.getItem('lolstat.setpage') || 'general'; } catch(e){ return 'general'; } })();
+function showSetPage(k){
+  setPage = k; try { localStorage.setItem('lolstat.setpage', k); } catch(e){}
+  document.querySelectorAll('.snav button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  document.querySelectorAll('.spage').forEach(p => p.classList.toggle('on', p.dataset.k === k));
+}
+function buildSettingsPages(){
+  const root = q('#p-settings'); if (!root || root.dataset.paged) return; root.dataset.paged = '1';
+  const ruleOf = t => { for (const [re, c] of SET_RULES) if (re.test(t)) return c; return 'general'; };
+  const units = [];
+  [...root.children].forEach(box => {
+    if (box.id === 'about' || box.querySelector('#trouble')) { units.push({cat:'about', nodes:[box], whole:true}); return; }
+    if (box.id === 'clSettings') { [...box.children].slice(0, 2).forEach(n => n.remove()); units.push({cat:'clips', nodes:[...box.children]}); return; }
+    let cur = null;
+    [...box.children].forEach(ch => {
+      if (ch.tagName === 'H2'){ cur = {cat: ruleOf(ch.textContent.trim()), nodes:[ch]}; units.push(cur); return; }
+      if (!cur){ const b = ch.querySelector('b'); units.push({cat: ruleOf(b ? b.textContent.trim() : ''), nodes:[ch]}); return; }
+      if (ch.classList.contains('set') && cur.cat === 'general' && ruleOf((ch.querySelector('b') || {}).textContent || '') !== 'general'){
+        units.push({cat: ruleOf(ch.querySelector('b').textContent.trim()), nodes:[ch]}); return; }
+      cur.nodes.push(ch);
+    });
+  });
+  const wrap = document.createElement('div'); wrap.className = 'sp-wrap';
+  const nav = document.createElement('nav'); nav.className = 'snav'; nav.setAttribute('aria-label', 'Settings pages');
+  const main = document.createElement('div');
+  SET_PAGES.forEach(([k, t, d, ic]) => {
+    const mine = units.filter(u => u.cat === k); if (!mine.length) return;
+    const b = document.createElement('button'); b.dataset.k = k; b.textContent = t; b.onclick = () => showSetPage(k); nav.appendChild(b);
+    const pg = document.createElement('div'); pg.className = 'spage'; pg.dataset.k = k;
+    pg.innerHTML = `<div class="sp-head"><h2>${t}</h2><p>${d}</p></div>`;
+    const box = document.createElement('div'); box.className = 'box';
+    mine.forEach(u => {
+      if (u.whole){ u.nodes.forEach(n => { n.style && (n.style.maxWidth = 'none'); pg.appendChild(n); }); return; }
+      if (u.nodes[0].tagName === 'H2' && u.nodes[0].textContent.trim() === t) u.nodes.shift().remove();
+      u.nodes.forEach(n => box.appendChild(n));
+    });
+    if (box.children.length) pg.insertBefore(box, pg.children[1]);
+    main.appendChild(pg);
+  });
+  [...root.children].forEach(c => c.remove());
+  wrap.append(nav, main); root.appendChild(wrap);
+  showSetPage(SET_PAGES.some(p => p[0] === setPage) ? setPage : 'general');
+}
+// jumping to a setting (search) opens the right page first
+const _siv = Element.prototype.scrollIntoView;
+Element.prototype.scrollIntoView = function(...a){ const p = this.closest && this.closest('.spage'); if (p && !p.classList.contains('on')) showSetPage(p.dataset.k); return _siv.apply(this, a); };
+
+// ---------------- new settings: updates, panel content, live build
+function drawNewSettings(st){
+  const u = st.update || {};
+  if (q('#updCur')) q('#updCur').textContent = u.current || '';
+  const msg = {checking:'Checking for updates…', latest:"You're up to date.", available:`LoLStat ${u.latest} is ready to install.`, later:`LoLStat ${u.latest} is ready to install.`,
+               downloading:`Downloading ${u.latest}… ${u.pct || 0}%`, installing:'Installing… LoLStat will reopen in a moment.', error:u.error || "Couldn't check for updates.", idle:'Checks automatically when LoLStat opens.'}[u.status] || '';
+  if (q('#updState')) q('#updState').textContent = msg;
+  if (q('#updBtn')){ const av = u.status === 'available' || u.status === 'later'; q('#updBtn').textContent = av ? 'Update now' : 'Check now'; q('#updBtn').onclick = () => act(av ? 'update_install' : 'update_check'); }
+  if (q('#setUpdate')) q('#setUpdate').innerHTML = toggleRow(st, [['update_check','Check for updates automatically','When LoLStat opens, and every few hours'],['update_auto','Install updates automatically','Update without asking (LoLStat restarts by itself)']]);
+  if (q('#setPanel')) q('#setPanel').innerHTML = toggleRow(st, [['ov_show_steps','Start and first back','Your starting items and first back'],['ov_show_buynow','Buy now picks','Situational items the enemy team calls for'],
+    ['ov_show_kda','KDA','Kills / deaths / assists'],['ov_show_cs','CS','Minions and monsters'],['ov_show_csmin','CS per minute',''],['ov_show_kp','Kill participation','Share of your team’s kills you took part in'],
+    ['ov_show_gold','Gold','Your current gold'],['ov_show_level','Level',''],['ov_show_augments','Your augments','The augments you picked (ARAM Mayhem)']]);
+  if (q('#setLive')) q('#setLive').innerHTML = toggleRow(st, [['live_build_on','Live build','Show the Live build page in the panel and in the app']]);
+  const pp = q('#panelPage'); if (pp && document.activeElement !== pp) pp.value = st.settings.panel_page || 'builds';
+  // update ready: ask once per version
+  const pill = q('#updPill'); if (pill){ pill.style.display = (u.status === 'available' || u.status === 'later' || u.status === 'downloading' || u.status === 'installing') ? 'inline-flex' : 'none'; pill.textContent = u.status === 'downloading' ? `Updating ${u.pct || 0}%` : 'Update ready'; }
+  const m = q('#updModal');
+  if (u.status === 'available' && st.settings.update_seen !== u.latest && !window._updShown){ window._updShown = true; openUpdate(u); }
+  if (m.classList.contains('on')) drawUpdate(u);
+}
+function mdNotes(md){
+  return (md || '').split('\n').filter(l => l.trim() && !l.startsWith('## ')).map(l => l.startsWith('- ') ? `<li>${esc(l.slice(2)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}</li>` : `<p class="muted" style="margin:4px 0 8px">${esc(l)}</p>`).join('').replace(/(<li>.*<\/li>)/s, '<ul style="padding-left:18px;margin:0">$1</ul>');
+}
+function openUpdate(u){ q('#updModal').classList.add('on'); drawUpdate(u); }
+function drawUpdate(u){
+  q('#updTitle').textContent = `LoLStat ${u.latest} is ready`; q('#updSub').textContent = `You have ${u.current}. Here's what's new:`;
+  q('#updNotes').innerHTML = mdNotes(u.notes);
+  const busy = u.status === 'downloading' || u.status === 'installing';
+  q('#updProg').style.display = busy || u.status === 'error' ? '' : 'none'; q('#updActs').style.display = busy ? 'none' : 'flex';
+  q('#updBar').style.width = (u.status === 'installing' ? 100 : u.pct || 0) + '%';
+  q('#updProgText').textContent = u.status === 'installing' ? 'Installing… LoLStat will close and reopen on the new version.' : u.status === 'error' ? u.error : `Downloading… ${u.pct || 0}%`;
+}
+
+// ---------------- Live build page (also in the in-game panel)
+function drawLiveBuild(st){
+  const el = q('#lbOut'); if (!el || page !== 'livebuild') return;
+  const lb = st.live_build || (st.mayhem && st.mayhem.live_build);
+  const on = st.settings.live_build_on !== false;
+  let h = `<div class="box"><div class="cl-head"><div><h2 style="margin:0">Live build</h2><div class="muted" style="font-size:12.5px">What to buy next to stay ahead, from everyone's items as the game goes. Your locked builds and item sets don't change.</div></div>
+    <button class="btn ${on ? '' : 'gold'}" onclick="act('setting',{name:'live_build_on'})">${on ? 'Turn off' : 'Turn on'}</button></div></div>`;
+  if (!on) h += `<div class="box" style="margin-top:16px"><div class="muted">Live build is off. Turn it on to see it here and in the in-game panel.</div></div>`;
+  else if (!lb) h += `<div class="sd-hero"><h3>Starts with your game</h3><p>Once you're in a game, LoLStat reads every player's items, your gold and your augments, and tells you what to buy next to keep your damage ahead of what they're building.</p></div>`;
+  else {
+    const a = lb.ahead, af = lb.afford || {};
+    h += `<div class="lb-grid"><div class="box"><h2>Next buy</h2>${lb.next ? `<div class="lb-next">${img(lb.next.icon,'',64)}<div><b>${esc(lb.next.name)}</b><div class="lb-afford ${af.now ? 'now' : ''}">${esc(af.text || '')}</div></div></div>
+      ${lb.then && lb.then.length ? `<div class="muted" style="font-size:12px;margin-top:14px">Then</div><div class="lb-then">${lb.then.map(i => `<span>${img(i.icon,'',30)}${esc(i.name)}</span>`).join('')}</div>` : ''}` : '<div class="muted">Your build is complete.</div>'}
+      ${lb.reasons && lb.reasons.length ? `<h2 style="margin-top:18px">Why</h2><ul class="lb-why" style="padding-left:18px;margin:0">${lb.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</div>
+      <div class="box"><h2>Your items vs theirs</h2>${a ? `<div class="lb-ahead ${a.diff >= 0 ? 'up' : 'down'}">${a.diff >= 0 ? '+' + fmt(a.diff) : '−' + fmt(-a.diff)} gold</div><div class="muted" style="font-size:12.5px">${a.diff >= 0 ? 'ahead of' : 'behind'} their average (${fmt(a.mine)} vs ${fmt(a.their_avg)} in items)</div>` : ''}
+      ${lb.threat ? `<div style="margin-top:12px;font-size:13.5px">Biggest threat: <b>${esc(lb.threat.champion)}</b> <span class="muted">${fmt(lb.threat.items_gold)} gold in items${lb.threat.kda ? ', ' + lb.threat.kda : ''}</span></div>` : ''}
+      ${lb.defenses ? `<div class="muted" style="font-size:12.5px;margin-top:8px">Their average from items: ${lb.defenses.armor} armor · ${lb.defenses.mr} magic resist · ${fmt(lb.defenses.hp)} health</div>` : ''}</div></div>
+      <div class="box" style="margin-top:16px"><h2>What they're building</h2>${(lb.enemies || []).map(e => `<div class="lb-enemy"><div><b>${esc(e.champion)}</b><div class="muted" style="font-size:12px">${e.kda || ''}</div></div><div class="its">${e.items.map(i => `<span title="${esc(i.name)}">${img(i.icon, '', 28)}</span>`).join('') || '<span class="muted">No items yet</span>'}</div><div class="muted" style="text-align:right;font-size:12px">${fmt(e.gold)}g · ${e.armor} armor · ${e.mr} MR</div></div>`).join('')}</div>`;
+  }
+  el.innerHTML = h;
+}
+'''
+
+
+def extend9(html):
+    a = '''    <p class="fine" style="margin-top:18px" id="about"></p>'''
+    assert html.count(a) == 1
+    html = html.replace(a, SETTINGS9 + "\n" + a, 1)
+    html = html.replace('''  <button class="nav" data-page="fun"''', NAV9 + '''  <button class="nav" data-page="fun"''', 1)
+    html = html.replace('''    <span class="pill" id="patchPill">Patch</span>''', '''    <span class="pill" id="patchPill">Patch</span>
+    <span class="pill" id="updPill" onclick="openUpdate(S.update||{})">Update ready</span>''', 1)
+    html = html.replace('''  <!-- GAMES -->''', PAGE9 + '''  <!-- GAMES -->''', 1)
+    html = html.replace('''/* champ select */''', CSS9 + '''/* champ select */''', 1)
+    html = html.replace('''let lastTick = 0;''', JS9 + '''let lastTick = 0;''', 1)
+    html = html.replace('''drawSdHome(st); drawSdSettings(st); ovLookFill(st); drawClipSettings(st);''',
+                        '''drawSdHome(st); drawSdSettings(st); ovLookFill(st); drawClipSettings(st); drawNewSettings(st); drawLiveBuild(st);''', 1)
+    html = html.replace('''if (p==='clips'){ drawClips(); loadClips(); } }''', '''if (p==='clips'){ drawClips(); loadClips(); } if (p==='livebuild' && S) drawLiveBuild(S); if (p==='settings'){ buildSettingsPages(); if (S){ window._setQolSig = null; drawSetQol(S); drawNewSettings(S); } } }''', 1)
+    html = html.replace('''clips:'Clips',''', '''clips:'Clips', livebuild:'Live build',''', 1)
+    html = html.replace('''['clips','Clips'],''', '''['clips','Clips'],['livebuild','Live build'],''', 1)
+    html = html.replace('''['Clip settings','#clSettings'],''', '''['Clip settings','#clQuality'],['Updates','#updState'],['In-game panel content','#setPanel'],['Live build settings','#setLive'],''', 1)
+    html = html.replace('''<button class="btn" onclick="go('settings');setTimeout(()=>q('#clSettings').scrollIntoView({behavior:'smooth'}),80)">Clip settings</button>''',
+                        '''<button class="btn" onclick="go('settings');showSetPage('clips')">Clip settings</button>''', 1)
+    html = html.replace('''q('#panelPage')''', '''q('#panelPage')''')
+    html = html.replace('''let lastTick = 0;''', '''setTimeout(() => { buildSettingsPages(); const pp = q('#panelPage'); if (pp) pp.onchange = () => act('panel_page', {value: pp.value}); }, 0);
+let lastTick = 0;''', 1)
     return html

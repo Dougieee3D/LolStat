@@ -474,6 +474,10 @@ settings = {"overlay": True, "scan": True, "panel_open": False, "itemsets": True
             # launch
             "showdown_best_of": 3, "showdown_auto": True,
             "overlay_look": "app", "panel_size": 0.85, "overlay_alpha": 0.9,
+            "update_check": True, "update_auto": False,
+            "live_build_on": True, "panel_page": "builds", "ov_show_steps": True, "ov_show_buynow": True,
+            "ov_show_kda": False, "ov_show_cs": False, "ov_show_csmin": False, "ov_show_kp": False, "ov_show_gold": False,
+            "ov_show_level": False, "ov_show_augments": False,
             "clips_on": False, "clip_quality": "high", "clip_before": 12, "clip_after": 5, "clip_sound": True,
             "clip_full_game": False, "clip_max_gb": 20, "clip_kills": True, "clip_multikills": True, "clip_deaths": False,
             "clip_assists": False, "clip_objectives": True, "clip_aces": True, "clip_game_end": True,
@@ -593,7 +597,8 @@ def full_state():
         "mayhem": mayhem.state() if mayhem else {},
         "log": [l for l in LOG_LINES if "Phone remote:" not in l][-8:],
         "goal": goal_progress(), "dnd_active": is_dnd(), "showdown": showdown.summary(),
-            "clips": clips.view() if clips else None, "tilt_lock": tilt_locked(),
+            "clips": clips.view() if clips else None,
+            "update": updater.view() if updater else None, "tilt_lock": tilt_locked(),
         "onboarded": bool(settings.get("onboarded")), "show_whatsnew": bool(settings.get("onboarded")) and settings.get("last_version") != APP_VERSION,
         "my_champs": {c["champion"]: [c["games"], c["wr"]] for c in (insights_data().get("champions") or [])},
         "snapshots": SNAP_DIR,
@@ -781,6 +786,19 @@ def do_action(body):
     elif act == "test_overlay":
         mayhem.test_until = time.time() + 15
         mayhem.notify("Test overlay: look at your screen for the LoLStat button, panel and three sample letters (15 seconds).")
+    elif act == "update_check":
+        if updater:
+            threading.Thread(target=updater.check, daemon=True).start()
+    elif act == "update_install":
+        if updater:
+            updater.install()
+    elif act == "update_later":
+        if updater:
+            updater.later()
+            save_settings()
+    elif act == "panel_page":
+        settings["panel_page"] = "live" if body.get("value") == "live" else "builds"
+        save_settings()
     elif act == "clip_delete":
         if clips:
             clips.delete(body.get("path", ""))
@@ -2335,6 +2353,7 @@ def run_fallback():
 
 
 clips = None
+updater = None
 
 _mutex = {"h": None}
 
@@ -2392,6 +2411,15 @@ def main():
         return
     from mayhem_service import MayhemService
     mayhem = MayhemService(DATA_DIR, log, settings)
+    global updater
+    try:
+        import updater as updater_mod
+        updater = updater_mod.Updater(APP_VERSION, settings, log, lambda t: notify_user("LoLStat update", t),
+                                      lambda: threading.Thread(target=quit_app, daemon=True).start())
+        if "--test" not in sys.argv:
+            updater.start()
+    except Exception as e:
+        log(f"Updates unavailable: {e}")
     global clips
     try:
         import clips as clips_mod
