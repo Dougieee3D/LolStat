@@ -12,6 +12,16 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.2.2",
+        "date": "2026-11-09",
+        "summary": "Item sets in the familiar layout, and other apps' item sets cleaned up.",
+        "changes": [
+            ("Item sets", "Laid out the way you know them: Starting Items, Core Items in buy order with your boots (like Bloodthirster, Ionian Boots, Essence Reaver), then Fourth, Fifth and Sixth Item Options with up to three choices each, Situational Items and Consumables & Trinkets."),
+            ("In-game panel", "Shows your build in the same order as the shop: Core items, then your fourth, fifth and sixth items."),
+            ("Other apps' item sets", "Item sets left in your client by other build apps are removed automatically, so the shop only shows LoLStat's sets and your own. Sets you made yourself are never touched. Turn this off, or clean up any time, in Settings > Automation."),
+        ],
+    },
+    {
         "version": "4.2.1",
         "date": "2026-11-09",
         "summary": "Augment cards are read no matter where LoLStat is.",

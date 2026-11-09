@@ -474,7 +474,7 @@ settings = {"overlay": True, "scan": True, "panel_open": False, "itemsets": True
             # launch
             "showdown_best_of": 3, "showdown_auto": True,
             "overlay_look": "app", "panel_size": 0.85, "overlay_alpha": 0.9,
-            "update_check": True, "update_auto": False,
+            "update_check": True, "update_auto": False, "itemsets_clean_others": True,
             "live_build_on": True, "panel_page": "builds", "ov_show_steps": True, "ov_show_buynow": True,
             "ov_show_kda": False, "ov_show_cs": False, "ov_show_csmin": False, "ov_show_kp": False, "ov_show_gold": False,
             "ov_show_level": False, "ov_show_augments": False,
@@ -786,6 +786,15 @@ def do_action(body):
     elif act == "test_overlay":
         mayhem.test_until = time.time() + 15
         mayhem.notify("Test overlay: look at your screen for the LoLStat button, panel and three sample letters (15 seconds).")
+    elif act == "itemsets_clean":
+        def run():
+            try:
+                n = clean_other_item_sets()
+                mayhem.notify(f"Removed {n} item set{'s' if n != 1 else ''} from other apps. Yours are kept." if n
+                              else "No item sets from other apps found.")
+            except Exception as e:
+                mayhem.notify(f"Couldn't clean up item sets: {e}")
+        threading.Thread(target=run, daemon=True).start()
     elif act == "update_check":
         if updater:
             threading.Thread(target=updater.check, daemon=True).start()
@@ -1087,6 +1096,21 @@ def _is_ours(x):
     return uid in ITEMSET_UIDS or uid.startswith(ITEMSET_PREFIX) or str(x.get("title", "")).startswith("LoLStat - ")
 
 
+# item sets other build apps leave behind, recognised by the app name they put first in the title
+# (or in the id / file name). Sets you made yourself never match and are never touched.
+_OTHER_APP = re.compile(r"^[\s\[\(]*(u\.?gg|blitz(\.gg)?|mobalytics|op\.?gg|porofessor|probuilds|lolalytics|metasrc|"
+                        r"champion\.?gg|deeplol|lolvvv|league ?of ?graphs|iten|itemsetter|championify|ugg)\b", re.I)
+
+
+def _is_other_app(x, filename=""):
+    if _is_ours(x):
+        return False
+    for v in (x.get("title"), x.get("uid"), re.sub(r"[_\-.]+", " ", filename.rsplit(".", 1)[0])):
+        if v and _OTHER_APP.search(str(v)):
+            return True
+    return False
+
+
 ROLE_NAME = {"top": "Top", "jungle": "Jungle", "middle": "Mid", "bottom": "ADC", "utility": "Support"}
 STYLE_NAME = {"MAX DAMAGE": "Max damage", "AUGMENT OVERDRIVE": "Overdrive", "NEVER BEEN DONE": "Off-meta",
               "COUNTER-DAMAGE": "Counter-damage"}
@@ -1100,8 +1124,9 @@ def set_title(champ, mode, role, style="", main=True):
 
 
 def ugg_blocks(builds, idx, mode, role, champ):
-    """Item set blocks:
-    Starting Items, Core Items, Boots, Fourth/Fifth/Sixth Item Options, Situational Items, Consumables & Trinkets."""
+    """Item set blocks, laid out the familiar way:
+    Starting Items, Core Items (in buy order, boots included), Fourth / Fifth / Sixth Item Options,
+    Situational Items, Consumables & Trinkets."""
     b = builds[idx]
     g = b.get("guide") or {}
     def ids(items):
@@ -1112,27 +1137,32 @@ def ugg_blocks(builds, idx, mode, role, champ):
     blocks = []
     if (g.get("start") or {}).get("items"):
         blocks.append({"type": "Starting Items", "items": ids(g["start"]["items"])})
-    core = b["items"][:3]
-    blocks.append({"type": "Core Items", "items": ids(core)})
-    situ = g.get("situational") or []
+    items = b["items"]
+    # core = three buys: first item, boots, second item (or three items when the build skips boots)
     if b.get("boots"):
-        swaps = [x for x in situ if x["situation"] == "Boots swap"]
-        blocks.append({"type": "Boots", "items": ids([b["boots"]] + swaps)})
-    core_ids = {str(i["id"]) for i in core}
+        core, first_opt = [items[0], b["boots"]] + items[1:2], 2
+    else:
+        core, first_opt = items[:3], 3
+    blocks.append({"type": "Core Items", "items": [{"id": str(i["id"]), "count": 1} for i in core]})
+    taken = {str(i["id"]) for i in core}
+    others = [o for o in builds if o is not b]
     names = ["Fourth Item Options", "Fifth Item Options", "Sixth Item Options"]
-    for k, name in zip(range(3, 6), names):
-        if k >= len(b["items"]):
-            break                 # boots fill the 6th slot: 3 core + boots + 4th + 5th
-        opts, seen = [], set(core_ids)
-        cands = [x["items"][k] for x in [b] + [o for o in builds if o is not b] if len(x["items"]) > k]
-        cands += [x["items"][k - 1] for x in builds if o_ok(x, k - 1)] + [x["items"][k + 1] for x in builds if o_ok(x, k + 1)]
+    for n, name in enumerate(names):
+        k = first_opt + n
+        if k >= len(items) and not any(len(o["items"]) > k for o in others):
+            break
+        cands = [x["items"][k] for x in [b] + others if len(x["items"]) > k]
+        cands += [x["items"][j] for x in [b] + others for j in (k + 1, k - 1) if first_opt <= j < len(x["items"])]
+        opts = []
         for it in cands:
-            if str(it["id"]) not in seen and len(opts) < 3:
-                seen.add(str(it["id"]))
+            if str(it["id"]) not in taken and len(opts) < 3:
+                taken.add(str(it["id"]))
                 opts.append(it)
         if opts:
             blocks.append({"type": name, "items": ids(opts)})
-    extra = [x for x in situ if x["situation"] != "Boots swap"]
+    situ = g.get("situational") or []
+    extra = [x for x in situ if x["situation"] != "Boots swap"] + [x for x in situ if x["situation"] == "Boots swap"]
+    extra = [x for x in extra if str(x["id"]) not in taken]
     if extra:
         blocks.append({"type": "Situational Items", "items": ids(extra[:6])})
     ch = mayhem.data["champions"].get(champ, {})
@@ -1244,6 +1274,62 @@ def _remove_set_files():
     return n
 
 
+def _remove_other_app_files():
+    """Delete item set files other apps wrote into League's Config folder. Only files whose name or title
+    starts with another app's name; every other file (including ones you made) stays."""
+    try:
+        base = _install["dir"] or _league_dir()
+    except Exception:
+        base = None
+    cfg = os.path.join(base, "Config") if base else None
+    if not cfg or not os.path.isdir(cfg):
+        return 0
+    folders = [os.path.join(cfg, "Global", "Recommended")]
+    champs = os.path.join(cfg, "Champions")
+    if os.path.isdir(champs):
+        folders += [os.path.join(champs, c, "Recommended") for c in os.listdir(champs)]
+    n = 0
+    for rec in folders:
+        if not os.path.isdir(rec):
+            continue
+        for fn in os.listdir(rec):
+            if not fn.lower().endswith(".json") or fn.startswith("LoLStat_"):
+                continue
+            fp = os.path.join(rec, fn)
+            try:
+                with open(fp, encoding="utf-8", errors="replace") as fh:
+                    data = json.load(fh)
+            except Exception:
+                data = {}
+            if _is_other_app(data if isinstance(data, dict) else {}, fn):
+                try:
+                    os.remove(fp)
+                    n += 1
+                except OSError:
+                    pass
+    return n
+
+
+def clean_other_item_sets():
+    """Remove other apps' item sets now: from your account's sets in the client and from League's files."""
+    n = _remove_other_app_files()
+    try:
+        path, me = _set_path()
+        cur = lcu_call("GET", path) or {}
+        sets = cur.get("itemSets", [])
+        keep = [x for x in sets if not _is_other_app(x)]
+        if len(keep) != len(sets):
+            lcu_call("PUT", path, {"accountId": cur.get("accountId", me.get("accountId")), "itemSets": keep,
+                                   "timestamp": int(time.time() * 1000)})
+            n += len(sets) - len(keep)
+    except Exception as e:
+        if not n:
+            raise RuntimeError("open the League client first") from e
+    log(f"Removed {n} item set{'s' if n != 1 else ''} made by other apps. Yours are kept." if n
+        else "No item sets from other apps found. Yours are untouched.")
+    return n
+
+
 def _set_path():
     me = lcu_call("GET", "/lol-summoner/v1/current-summoner") or {}
     return f"/lol-item-sets/v1/item-sets/{me['summonerId']}/sets", me
@@ -1253,7 +1339,11 @@ def _put_sets(make_ours):
     """Replace only LoLStat's sets; the player's own sets stay exactly as they are."""
     path, me = _set_path()
     cur = lcu_call("GET", path) or {}
-    keep = [x for x in cur.get("itemSets", []) if not _is_ours(x)]
+    clean = settings.get("itemsets_clean_others", True)
+    keep = [x for x in cur.get("itemSets", []) if not _is_ours(x) and not (clean and _is_other_app(x))]
+    gone = len(cur.get("itemSets", [])) - len(keep) - len([x for x in cur.get("itemSets", []) if _is_ours(x)])
+    if gone:
+        log(f"Removed {gone} item set{'s' if gone != 1 else ''} other apps left in your client (yours are kept).")
     ours = make_ours()
     body = {"accountId": cur.get("accountId", me.get("accountId")), "itemSets": keep + ours,
             "timestamp": int(time.time() * 1000)}
@@ -1305,6 +1395,14 @@ def write_item_sets():
                          "preferredItemSlots": [], "sortrank": n, "startedFrom": "blank"})
         return sets
     errors = []
+    if settings.get("itemsets_clean_others", True) and not _itemsets.get("files_cleaned"):
+        _itemsets["files_cleaned"] = True                  # once per session: League's files from other apps
+        try:
+            k = _remove_other_app_files()
+            if k:
+                log(f"Removed {k} item set file{'s' if k != 1 else ''} other apps left in League's folder.")
+        except Exception:
+            pass
     try:
         _put_sets(ours)
     except Exception as e:

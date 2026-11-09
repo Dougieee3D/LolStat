@@ -679,15 +679,16 @@ class InGameLayer(threading.Thread):
                     if g["first_back"]["items"]:
                         head("First back: " + short(g["first_back"]["items"], 38)); y += 16
                     y += 4
-                head("Core - rush the first item"); y += 16
-                for it in g["core"]:
-                    items.append(("item", y, dict(it, why=("Rush first. " if it.get("rush") else "") + it.get("why", "")))); y += 30
-                if g["boots"] and g["boots"]["item"]:
-                    head("Boots - " + g["boots"]["note"].lower().replace("finish these ", "")); y += 16
-                    items.append(("item", y, g["boots"]["item"])); y += 30
-                if g["late"]:
-                    head("End game"); y += 16
-                    for it in g["late"]:
+                # same order as the item sets in the shop: Core Items (boots included), then 4th, 5th, 6th
+                seq = [dict(it, why=("Rush first. " if it.get("rush") else "") + it.get("why", "")) for it in g["core"]] + list(g["late"] or [])
+                boots = g["boots"]["item"] if g["boots"] and g["boots"].get("item") else None
+                core, rest = ((seq[:1] + [boots] + seq[1:2]), seq[2:]) if boots else (seq[:3], seq[3:])
+                head("Core items"); y += 16
+                for it in core:
+                    items.append(("item", y, it)); y += 30
+                if rest:
+                    head("Fourth, fifth and sixth items"); y += 16
+                    for it in rest[:3]:
                         items.append(("item", y, it)); y += 30
                 urgent = ([x for x in g["situational"] if x.get("urgent")][:2] or g["situational"][:1]) if S.get("ov_show_buynow", True) else []
                 if urgent:

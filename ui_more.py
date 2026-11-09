@@ -1152,6 +1152,9 @@ SETTINGS9 = r'''
       <h2>Updates</h2>
       <div class="set"><div><b>LoLStat <span id="updCur"></span></b><p id="updState">Checking…</p></div><div style="display:flex;gap:8px"><button class="btn" id="updBtn" onclick="act('update_check')">Check now</button></div></div>
       <div class="auto" id="setUpdate"></div>
+      <h2>Item sets from other apps</h2>
+      <div class="auto" id="setClean"></div>
+      <div class="set"><div><b>Clean up item sets from other apps</b><p>Removes the item sets other build apps left in your client, so only LoLStat's and your own show in the shop. Sets you made yourself are never touched.</p></div><button class="btn" onclick="act('itemsets_clean')">Clean up now</button></div>
       <h2>Panel content</h2>
       <div class="muted" style="font-size:12.5px;margin-bottom:6px">Choose what the in-game panel shows. Your builds are always there.</div>
       <div class="auto" id="setPanel"></div>
@@ -1220,7 +1223,7 @@ const SET_PAGES = [
   ['safety','Backup & safety','Backups, safe mode and cleanup','⛨'],
   ['about','Help & about','Troubleshooting and version','?']];
 const SET_RULES = [[/^Auto-accept/,'automation'],[/^In-game overlay$|^In-game panel|^Read augment cards|^Hotkey|^Panel content|^Live build|^Open the panel/,'overlay'],
-  [/^Item sets in the League|^Champ select helpers|^Favorite champions/,'automation'],[/^Game data|^Window and performance|^Updates/,'general'],
+  [/^Item sets in the League|^Item sets from other apps|^Clean up item sets|^Champ select helpers|^Favorite champions/,'automation'],[/^Game data|^Window and performance|^Updates/,'general'],
   [/^Appearance|^Champion themes|^Custom theme|^Accessibility/,'look'],[/^Notifications|^Wellbeing/,'notify'],[/^Party Showdown/,'showdown'],
   [/^Backup and restore|^Safety/,'safety'],[/^Clips/,'clips']];
 let setPage = (()=>{ try { return localStorage.getItem('lolstat.setpage') || 'general'; } catch(e){ return 'general'; } })();
@@ -1282,6 +1285,7 @@ function drawNewSettings(st){
   if (q('#setPanel')) q('#setPanel').innerHTML = toggleRow(st, [['ov_show_steps','Start and first back','Your starting items and first back'],['ov_show_buynow','Buy now picks','Situational items the enemy team calls for'],
     ['ov_show_kda','KDA','Kills / deaths / assists'],['ov_show_cs','CS','Minions and monsters'],['ov_show_csmin','CS per minute',''],['ov_show_kp','Kill participation','Share of your team’s kills you took part in'],
     ['ov_show_gold','Gold','Your current gold'],['ov_show_level','Level',''],['ov_show_augments','Your augments','The augments you picked (ARAM Mayhem)']]);
+  if (q('#setClean')) q('#setClean').innerHTML = toggleRow(st, [['itemsets_clean_others','Remove other apps\u2019 item sets automatically','When LoLStat saves your item sets. Your own sets stay']]);
   if (q('#setLive')) q('#setLive').innerHTML = toggleRow(st, [['live_build_on','Live build','Show the Live build page in the panel and in the app']]);
   const pp = q('#panelPage'); if (pp && document.activeElement !== pp) pp.value = st.settings.panel_page || 'builds';
   // update ready: ask once per version
