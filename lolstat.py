@@ -2404,6 +2404,11 @@ def main():
         pass
     if not single_instance():
         return
+    try:   # full speed while minimized or in the tray, so cards are read the instant they appear
+        import screen_reader as _boost
+        _boost.boost_process()
+    except Exception:
+        pass
     try:
         server = ThreadingHTTPServer(("0.0.0.0", WEB_PORT), Handler)
     except OSError:

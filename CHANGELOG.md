@@ -1,5 +1,12 @@
 # LoLStat patch notes
 
+## LoLStat 4.2.1 (2026-11-09)
+
+Augment cards are read no matter where LoLStat is.
+
+- **Minimized is fine:** LoLStat keeps full speed while it's minimized or in the tray, so card grades show up instantly without keeping the app open on another screen.
+- **Behind other windows:** If a window covers League (LoLStat itself, a browser, Discord), LoLStat reads the game's own picture instead of pausing. League needs to be in Borderless window mode.
+
 ## LoLStat 4.2.0 (2026-11-09)
 
 Live build, a cleaner Settings, panel toggles and automatic updates.

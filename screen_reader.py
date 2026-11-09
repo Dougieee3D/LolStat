@@ -288,6 +288,81 @@ def foreground_is(hwnd):
     return ctypes.windll.user32.GetForegroundWindow() == hwnd
 
 
+class WindowGrab:
+    """Reads the game's own picture even when another window is on top of it (Windows' PrintWindow with
+    full content), so cards are read no matter what's covering League. Same grab() as ImageGrab, screen coords."""
+
+    def __init__(self, hwnd, rect):
+        self.hwnd, self.rect = hwnd, rect
+
+    def grab(self, bbox=None, all_screens=True):
+        import ctypes
+        from ctypes import wintypes
+        from PIL import Image
+        u, g = ctypes.windll.user32, ctypes.windll.gdi32
+        H = ctypes.c_void_p
+        for f, args, res in ((u.GetDC, [H], H), (u.ReleaseDC, [H, H], ctypes.c_int), (u.PrintWindow, [H, H, ctypes.c_uint], ctypes.c_int),
+                             (g.CreateCompatibleDC, [H], H), (g.CreateCompatibleBitmap, [H, ctypes.c_int, ctypes.c_int], H),
+                             (g.SelectObject, [H, H], H), (g.DeleteObject, [H], ctypes.c_int), (g.DeleteDC, [H], ctypes.c_int),
+                             (g.GetDIBits, [H, H, ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint], ctypes.c_int)):
+            f.argtypes, f.restype = args, res
+        l, t, r, b = self.rect
+        w, h = r - l, b - t
+        hdc = u.GetDC(self.hwnd)
+        mem = g.CreateCompatibleDC(hdc)
+        bmp = g.CreateCompatibleBitmap(hdc, w, h)
+        old = g.SelectObject(mem, bmp)
+        try:
+            if not u.PrintWindow(self.hwnd, mem, 3):          # PW_CLIENTONLY | PW_RENDERFULLCONTENT
+                raise OSError("PrintWindow failed")
+
+            class BIH(ctypes.Structure):
+                _fields_ = [("biSize", wintypes.DWORD), ("biWidth", ctypes.c_long), ("biHeight", ctypes.c_long),
+                            ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                            ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", ctypes.c_long), ("biYPelsPerMeter", ctypes.c_long),
+                            ("biClrUsed", wintypes.DWORD), ("biClrImportant", wintypes.DWORD), ("pad", wintypes.DWORD * 3)]
+            bih = BIH(40, w, -h, 1, 32, 0)
+            buf = ctypes.create_string_buffer(w * h * 4)
+            g.GetDIBits(mem, bmp, 0, h, buf, ctypes.byref(bih), 0)
+        finally:
+            g.SelectObject(mem, old)
+            g.DeleteObject(bmp)
+            g.DeleteDC(mem)
+            u.ReleaseDC(self.hwnd, hdc)
+        img = Image.frombuffer("RGB", (w, h), buf, "raw", "BGRX", 0, 1)
+        if bbox:
+            img = img.crop((bbox[0] - l, bbox[1] - t, bbox[2] - l, bbox[3] - t))
+        return img
+
+
+def boost_process():
+    """Keep LoLStat at full speed while it's minimized or in the tray. Without this Windows treats it as a
+    background program (slower CPU cores, coarser timers) and card grades show up late."""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    class PPTS(ctypes.Structure):
+        _fields_ = [("Version", ctypes.c_ulong), ("ControlMask", ctypes.c_ulong), ("StateMask", ctypes.c_ulong)]
+    k = ctypes.windll.kernel32
+    k.GetCurrentProcess.restype = ctypes.c_void_p
+    k.SetProcessInformation.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong]
+    st = PPTS(1, 0x1 | 0x4, 0)            # execution speed + timer resolution: never throttled
+    try:
+        k.SetProcessInformation(k.GetCurrentProcess(), 4, ctypes.byref(st), ctypes.sizeof(st))   # ProcessPowerThrottling
+    except Exception:
+        pass
+    try:
+        ctypes.windll.winmm.timeBeginPeriod(1)
+    except Exception:
+        pass
+    try:
+        k.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        k.SetPriorityClass(k.GetCurrentProcess(), 0x8000)    # ABOVE_NORMAL: reads keep up while the game runs
+    except Exception:
+        pass
+
+
 def game_visible(hwnd, rect):
     """True when the middle of the screen shows League (not another window like our app on top)."""
     ctypes, wintypes = _win()
@@ -480,6 +555,22 @@ class ScreenReader:
             return
         threading.Thread(target=self._scan_loop, daemon=True).start()
         threading.Thread(target=self._click_loop, daemon=True).start()
+
+    def _window_grab_ok(self, grabber, rect):
+        """Can the game's picture be read while it's covered? (Checked once a game; some setups give black.)"""
+        key = (grabber.hwnd, tuple(rect))
+        if getattr(self, "_wg_key", None) == key and time.time() - getattr(self, "_wg_t", 0) < 30:
+            return self._wg_ok
+        from PIL import ImageStat
+        try:
+            img = grabber.grab(bbox=(rect[0], rect[1], rect[2], rect[1] + (rect[3] - rect[1]) // 2))
+            ok = sum(ImageStat.Stat(img.convert("L")).mean) > 3
+        except Exception:
+            ok = False
+        if ok != getattr(self, "_wg_ok", None):
+            self.log("Reading cards behind other windows." if ok else "Can't read League while it's covered: set League's Window Mode to Borderless.")
+        self._wg_key, self._wg_t, self._wg_ok = key, time.time(), ok
+        return ok
 
     def _status(self, s):
         self.svc.scanner_status = s
@@ -715,12 +806,20 @@ class ScreenReader:
                     self.game_rect = rect
                     if not hwnd:
                         self._status("Can't find the League game window")
-                    elif not (foreground_is(hwnd) or game_visible(hwnd, rect)):
-                        self._status("Paused: another window is covering League")
                     else:
+                        # League on top: read the screen (fastest). Covered by another window (LoLStat, a browser…):
+                        # read the game's own picture instead, so nothing ever needs to be moved out of the way.
+                        covered = not (foreground_is(hwnd) or game_visible(hwnd, rect))
+                        grabber = ImageGrab
+                        if covered:
+                            grabber = WindowGrab(hwnd, rect)
+                            if not self._window_grab_ok(grabber, rect):
+                                self._status("Paused: another window is covering League")
+                                time.sleep(0.5)
+                                continue
                         self.matcher.update(self.svc.match_names())
                         self._check_lang()
-                        frames = self._fast_cards(ImageGrab, rect)
+                        frames = self._fast_cards(grabber, rect)
                         now = time.time()
                         if frames >= 2:                  # cards are up: keep reading their names
                             self._status("Reading augment cards")
@@ -749,7 +848,7 @@ class ScreenReader:
                                l + int(W * SCAN_BAND[2]), t + int(H * SCAN_BAND[3]))
                         full_h = int(H * (REGION[3] - REGION[1]))
                         band = False
-                        img = ImageGrab.grab(bbox=box, all_screens=True)
+                        img = grabber.grab(bbox=box, all_screens=True)
                         self.last_img, self.last_box = img, box
                         if sum(ImageStat.Stat(img.convert("L")).mean) < 2:
                             self._status("Can't see the game: set League's Window Mode to Borderless")

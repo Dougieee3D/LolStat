@@ -12,6 +12,15 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.2.1",
+        "date": "2026-11-09",
+        "summary": "Augment cards are read no matter where LoLStat is.",
+        "changes": [
+            ("Minimized is fine", "LoLStat keeps full speed while it's minimized or in the tray, so card grades show up instantly without keeping the app open on another screen."),
+            ("Behind other windows", "If a window covers League (LoLStat itself, a browser, Discord), LoLStat reads the game's own picture instead of pausing. League needs to be in Borderless window mode."),
+        ],
+    },
+    {
         "version": "4.2.0",
         "date": "2026-11-09",
         "summary": "Live build, a cleaner Settings, panel toggles and automatic updates.",
