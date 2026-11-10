@@ -12,6 +12,15 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.4.2",
+        "date": "2026-11-10",
+        "summary": "Privacy: LoLStat only talks to your own PC unless you turn on the phone remote.",
+        "changes": [
+            ("Phone remote is now off by default", "LoLStat only listens on your own PC, so nothing else on your Wi-Fi can reach it. Turn on Phone remote on the Home page when you want to use your phone; it still needs the secret link in the QR code."),
+            ("Privacy", "LoLStat doesn't collect or send anything about you. It only downloads game data, item and augment stats, and checks for updates."),
+        ],
+    },
+    {
         "version": "4.4.1",
         "date": "2026-11-10",
         "summary": "Play is one page you scroll.",

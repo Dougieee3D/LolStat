@@ -387,7 +387,8 @@ main>.top,main>.page{max-width:1640px;margin-left:auto;margin-right:auto}
       </div>
       <div class="box row" style="align-items:center;gap:20px">
         <div class="qr"><img id="qr" alt="Phone remote QR code"></div>
-        <div><h2>Phone remote</h2><div class="muted" style="font-size:12.5px">Scan with your phone camera on the same Wi-Fi to accept, decline or switch auto-accept off from the couch.</div></div>
+        <div style="flex:1"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><h2 style="margin:0">Phone remote</h2><button class="switch" id="phoneSwitch" aria-label="Phone remote" onclick="act('setting',{name:'phone_remote'})"></button></div>
+          <div class="muted" style="font-size:12.5px;margin-top:6px" id="phoneText">Off: LoLStat only talks to this PC. Turn it on to accept, decline or switch auto-accept off from your phone on the same Wi-Fi.</div></div>
       </div>
     </div>
     <div class="homegrid">
@@ -546,6 +547,9 @@ function render(st){
   q('#phaseBig').textContent = on ? ph[0] : 'Open League to start';
   q('#phaseSub').textContent = on ? ph[1] : 'LoLStat connects as soon as the client is running.';
   q('#acceptSwitch').classList.toggle('on', a.enabled);
+  { const ph = !!st.settings.phone_remote; q('#phoneSwitch').classList.toggle('on', ph); q('#phoneSwitch').setAttribute('aria-pressed', ph);
+    q('.qr').style.display = ph ? '' : 'none';
+    q('#phoneText').textContent = ph ? 'On: scan with your phone camera on the same Wi-Fi to accept, decline or switch auto-accept off. Only someone with this code can connect.' : 'Off: LoLStat only talks to this PC. Turn it on to accept, decline or switch auto-accept off from your phone on the same Wi-Fi.'; }
   q('#accCount').textContent = a.accepted_count;
   q('#accLast').textContent = a.last_accepted ? 'Last one at ' + a.last_accepted : 'None yet this session';
   q('#ovState').textContent = st.settings.overlay ? 'On' : 'Off';

@@ -474,7 +474,7 @@ settings = {"overlay": True, "scan": True, "panel_open": False, "itemsets": True
             # launch
             "showdown_best_of": 3, "showdown_auto": True,
             "overlay_look": "app", "panel_size": 0.85, "overlay_alpha": 0.9,
-            "update_check": True, "update_auto": False, "itemsets_clean_others": True,
+            "update_check": True, "update_auto": False, "itemsets_clean_others": True, "phone_remote": False,
             "live_build_on": True, "panel_page": "builds", "ov_show_steps": True, "ov_show_buynow": True,
             "ov_show_kda": False, "ov_show_cs": False, "ov_show_csmin": False, "ov_show_kp": False, "ov_show_gold": False,
             "ov_show_level": False, "ov_show_augments": False,
@@ -621,7 +621,10 @@ def do_action(body):
         if name in settings:
             settings[name] = not settings[name]
             save_settings()
-            log(f"{name} turned {'on' if settings[name] else 'off'}.")
+            if name == "phone_remote":
+                set_phone_remote(settings[name])
+            else:
+                log(f"{name} turned {'on' if settings[name] else 'off'}.")
     elif act == "refresh_data":
         threading.Thread(target=mayhem.refresh_data, daemon=True).start()
     elif act == "add_aug":
@@ -838,7 +841,7 @@ def do_action(body):
 class Handler(BaseHTTPRequestHandler):
     def _ok_key(self):
         q = parse_qs(urlparse(self.path).query)
-        return q.get("key", [""])[0] == KEY
+        return secrets.compare_digest(q.get("key", [""])[0].encode(), KEY.encode())
 
     def _send(self, code, body, ctype="application/json"):
         data = body.encode() if isinstance(body, str) else body
@@ -1056,6 +1059,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, *args):
         pass
+
+
+_phone = {"srv": None}
+
+
+def set_phone_remote(on):
+    """Phone remote: off = LoLStat only listens on this PC. On = phones on your Wi-Fi can connect (with the secret link)."""
+    if on and not _phone["srv"]:
+        try:
+            srv = ThreadingHTTPServer((local_ip(), WEB_PORT), Handler)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            _phone["srv"] = srv
+            log(f"Phone remote on: {PHONE_URL}")
+        except OSError as e:
+            log(f"Couldn't turn on the phone remote ({e.__class__.__name__}).")
+    elif not on and _phone["srv"]:
+        srv, _phone["srv"] = _phone["srv"], None
+        threading.Thread(target=lambda: (srv.shutdown(), srv.server_close()), daemon=True).start()
+        log("Phone remote off: LoLStat only listens on this PC.")
 
 
 def local_ip():
@@ -2533,7 +2555,7 @@ def main():
     except Exception:
         pass
     try:
-        server = ThreadingHTTPServer(("0.0.0.0", WEB_PORT), Handler)
+        server = ThreadingHTTPServer(("127.0.0.1", WEB_PORT), Handler)      # this PC only
     except OSError:
         message_box("LoLStat is already running. Check your taskbar.")
         return
@@ -2580,7 +2602,8 @@ def main():
                     LOGO_64, os.path.join(DATA_DIR, "icons"), log).start()
     except Exception as e:
         log(f"In-game overlay didn't start: {e}")
-    log(f"Phone remote: {PHONE_URL}")
+    if settings.get("phone_remote"):
+        set_phone_remote(True)
 
     if "--console" in sys.argv:
         print(f"Running. App: {LOCAL}/app?key={KEY}   Phone: {PHONE_URL}")
