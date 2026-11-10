@@ -633,7 +633,9 @@ function autoHtml(st){
 }
 function spellHtml(st){
   const sel = (n,v) => `<select aria-label="${n}" onchange="act('set_value',{name:'${n}',value:this.value})">${SPELLS.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join('')}</select>`;
-  return `<span class="muted" style="font-size:12.5px">Spells: D</span>${sel('spell_d', st.settings.spell_d||'Smart')}<span class="muted" style="font-size:12.5px">F</span>${sel('spell_f', st.settings.spell_f||'Smart')}<span class="muted" style="font-size:12px">Smart picks damage spells for your champion.</span>`;
+  const fk = st.settings.flash_key || 'keep';
+  const flash = `<select aria-label="Flash on" onchange="act('set_value',{name:'flash_key',value:this.value})">${[['keep','where it already is'],['D','D'],['F','F']].map(([v,t])=>`<option value="${v}" ${v===fk?'selected':''}>${t}</option>`).join('')}</select>`;
+  return `<span class="muted" style="font-size:12.5px">Spells: D</span>${sel('spell_d', st.settings.spell_d||'Smart')}<span class="muted" style="font-size:12.5px">F</span>${sel('spell_f', st.settings.spell_f||'Smart')}<span class="muted" style="font-size:12.5px;margin-left:8px">Flash on</span>${flash}<span class="muted" style="font-size:12px">Smart picks the second spell for your champion and puts Flash on your key.</span>`;
 }
 function drawAuto(st){
   const sig = JSON.stringify([st.accept.enabled, st.settings]);
@@ -1131,7 +1133,7 @@ loop();
 
 import ui_more  # noqa: E402  (extra screens added onto the app page)
 from lolstat_assets import APP_VERSION as _V  # noqa: E402
-APP_HTML = ui_more.extend9(ui_more.extend8(ui_more.extend7(ui_more.extend6(ui_more.extend5(ui_more.extend4(ui_more.extend3(ui_more.extend2(ui_more.extend(APP_HTML))), _V))))))
+APP_HTML = ui_more.extend10(ui_more.extend9(ui_more.extend8(ui_more.extend7(ui_more.extend6(ui_more.extend5(ui_more.extend4(ui_more.extend3(ui_more.extend2(ui_more.extend(APP_HTML))), _V)))))))
 MINI_HTML = ui_more.mini_html(BASE_CSS, COMMON_JS)
 
 OVERLAY_HTML = r"""<!doctype html>

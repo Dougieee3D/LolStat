@@ -770,7 +770,7 @@ def do_action(body):
                 log("Clips: the new quality starts with your next game")
             save_settings()
             return
-        if name in ("badge_up", "badge_size", "theme", "custom_theme", "overlay_theme", "spell_d", "spell_f",
+        if name in ("badge_up", "badge_size", "theme", "custom_theme", "overlay_theme", "spell_d", "spell_f", "flash_key",
                     "hotkey_mods", "hotkey_key", "text_scale", "tilt_losses", "tilt_minutes",
                     "overlay_look", "panel_size", "overlay_alpha"):
             if name == "panel_size":
@@ -781,7 +781,7 @@ def do_action(body):
             if name == "overlay_look":
                 _follow["key"] = None          # re-check the champion skin right away
             save_settings()
-            if name in ("spell_d", "spell_f"):
+            if name in ("spell_d", "spell_f", "flash_key"):
                 _spells["sig"] = None
     elif act == "test_overlay":
         mayhem.test_until = time.time() + 15
@@ -1473,6 +1473,20 @@ def sync_runes(phase):
         mayhem.notify(f"Couldn't import runes: {e}")
 
 
+def _flash_side_now():
+    """Which key Flash is on right now in champ select (League remembers it from your last game)."""
+    try:
+        sess = lcu_call("GET", "/lol-champ-select/v1/session") or {}
+        me = next((p for p in sess.get("myTeam") or [] if p.get("cellId") == sess.get("localPlayerCellId")), {})
+        if me.get("spell1Id") == SPELLS["Flash"]:
+            return "D"
+        if me.get("spell2Id") == SPELLS["Flash"]:
+            return "F"
+    except Exception:
+        pass
+    return None
+
+
 def sync_spells(phase):
     """Set your summoner spells in champ select (Smart picks damage spells for your champion)."""
     if not mayhem or not settings.get("spells", True) or phase != "ChampSelect":
@@ -1485,11 +1499,22 @@ def sync_spells(phase):
         return
     aram = mayhem.mode in ("aram", "mayhem")
     d, f = settings.get("spell_d", "Smart"), settings.get("spell_f", "Smart")
-    sd, sf = smart_spells(champ, aram, cs.get("role", ""))
-    d = sd if d == "Smart" else d
-    f = sf if f == "Smart" else f
+    sd, sf = smart_spells(champ, aram, cs.get("role", ""))     # (other spell, "Flash")
+    if d == "Smart" or f == "Smart":
+        # Flash goes on the key you use for it: Settings > Flash on (D, F, or keep it where it already is)
+        side = settings.get("flash_key", "keep")
+        if side == "keep":
+            side = _flash_side_now() or "F"
+        other = sd if sf == "Flash" else sf
+        auto_d, auto_f = ("Flash", other) if side == "D" else (other, "Flash")
+        if d == "Smart" and f != "Smart":            # one key chosen by you: the other key gets Flash or the smart pick
+            d = "Flash" if f != "Flash" else other
+        elif f == "Smart" and d != "Smart":
+            f = "Flash" if d != "Flash" else other
+        else:
+            d, f = auto_d, auto_f
     if d == f:
-        f = "Flash" if d != "Flash" else sf
+        f = "Flash" if d != "Flash" else sd
     sig = (champ, d, f)
     if sig == _spells["sig"]:
         return

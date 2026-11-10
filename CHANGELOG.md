@@ -1,5 +1,13 @@
 # LoLStat patch notes
 
+## LoLStat 4.4.0 (2026-11-10)
+
+A cleaner sidebar, and Flash stays on your key.
+
+- **Cleaner sidebar:** Thirteen icons became seven: Home, Play, Champions, You, Fun, Clips and Settings. Related pages sit side by side as tabs across the top: Play has Champ select & builds, Live game and Live build; You has Profile, My stats, Games & damage and Friends; Fun has Fun and Party Showdown; Settings has Settings and Help. Each group reopens on the tab you used last.
+- **Live build:** Back on its own page, as a tab under Play next to Live game. It's still at the bottom of the in-game panel too.
+- **Summoner spells:** Flash no longer moves to F when you keep it on D. New in Settings > Automation: Flash on D, F, or where it already is (the default). Smart picks your other spell and leaves Flash on your key.
+
 ## LoLStat 4.3.1 (2026-11-10)
 
 Live build moved to the Live game page.

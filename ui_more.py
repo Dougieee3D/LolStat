@@ -1159,7 +1159,7 @@ SETTINGS9 = r'''
       <div class="muted" style="font-size:12.5px;margin-bottom:6px">Choose what the in-game panel shows. Your builds are always there.</div>
       <div class="auto" id="setPanel"></div>
       <h2>Live build</h2>
-      <div class="muted" style="font-size:12.5px;margin-bottom:6px">At the bottom of the in-game panel (scroll down) and on the Live game page: your whole build, starting as the one you locked in and changing as the enemy team builds. Your item sets don't change.</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px">At the bottom of the in-game panel (scroll down) and on the Live build page: your whole build, starting as the one you locked in and changing as the enemy team builds. Your item sets don't change.</div>
       <div class="auto" id="setLive"></div>
     </div>'''
 
@@ -1307,7 +1307,7 @@ function drawUpdate(u){
 
 // ---------------- Live build page (also in the in-game panel)
 function drawLiveBuild(st){
-  const el = q('#lbOut'); if (!el || page !== 'live') return;
+  const el = q('#lbOut'); if (!el || page !== 'livebuild') return;
   const lb = st.live_build || (st.mayhem && st.mayhem.live_build);
   const on = st.settings.live_build_on !== false;
   let h = `<div class="box"><div class="cl-head"><div><h2 style="margin:0">Live build</h2><div class="muted" style="font-size:12.5px">Your whole build, adjusting as everyone's items change. Also at the bottom of the in-game panel. Your item sets don't change.</div></div>
@@ -1341,20 +1341,80 @@ def extend9(html):
     html = html.replace('''    <span class="pill" id="patchPill">Patch</span>''', '''    <span class="pill" id="patchPill">Patch</span>
     <span class="pill" id="updPill" onclick="openUpdate(S.update||{})">Update ready</span>''', 1)
     html = html.replace('''  <!-- GAMES -->''', PAGE9 + '''  <!-- GAMES -->''', 1)
-    # Live build lives at the bottom of the Live game page
-    lv = '''    <div class="scout" id="scout"></div>\n  </section>'''
-    assert html.count(lv) == 1
-    html = html.replace(lv, '''    <div class="scout" id="scout"></div>\n    <div id="lbOut" style="margin-top:20px"></div>\n  </section>''', 1)
+    # Live build: its own page again (a tab under Play)
+    html = html.replace('''  <!-- GAMES -->''', '''  <!-- LIVE BUILD -->\n  <section class="page" id="p-livebuild"><div id="lbOut"></div></section>\n  <!-- GAMES -->''', 1)
     html = html.replace('''/* champ select */''', CSS9 + '''/* champ select */''', 1)
     html = html.replace('''let lastTick = 0;''', JS9 + '''let lastTick = 0;''', 1)
     html = html.replace('''drawSdHome(st); drawSdSettings(st); ovLookFill(st); drawClipSettings(st);''',
                         '''drawSdHome(st); drawSdSettings(st); ovLookFill(st); drawClipSettings(st); drawNewSettings(st); drawLiveBuild(st);''', 1)
-    html = html.replace('''if (p==='clips'){ drawClips(); loadClips(); } }''', '''if (p==='clips'){ drawClips(); loadClips(); } if (p==='live' && S) drawLiveBuild(S); if (p==='settings'){ buildSettingsPages(); if (S){ window._setQolSig = null; drawSetQol(S); drawNewSettings(S); } } }''', 1)
-    html = html.replace('''['clips','Clips'],''', '''['clips','Clips'],['live','Live build'],''', 1)
+    html = html.replace('''if (p==='clips'){ drawClips(); loadClips(); } }''', '''if (p==='clips'){ drawClips(); loadClips(); } if (p==='livebuild' && S) drawLiveBuild(S); if (p==='settings'){ buildSettingsPages(); if (S){ window._setQolSig = null; drawSetQol(S); drawNewSettings(S); } } }''', 1)
+    html = html.replace('''['clips','Clips'],''', '''['clips','Clips'],['livebuild','Live build'],''', 1)
     html = html.replace('''['Clip settings','#clSettings'],''', '''['Clip settings','#clQuality'],['Updates','#updState'],['In-game panel content','#setPanel'],['Live build settings','#setLive'],''', 1)
     html = html.replace('''<button class="btn" onclick="go('settings');setTimeout(()=>q('#clSettings').scrollIntoView({behavior:'smooth'}),80)">Clip settings</button>''',
                         '''<button class="btn" onclick="go('settings');showSetPage('clips')">Clip settings</button>''', 1)
     html = html.replace('''q('#panelPage')''', '''q('#panelPage')''')
     html = html.replace('''let lastTick = 0;''', '''setTimeout(() => buildSettingsPages(), 0);
 let lastTick = 0;''', 1)
+    return html
+
+
+# ====================================================================== tidy sidebar: tabs grouped, with tabs across the top
+CSS10 = r'''
+.subtabs{display:none;gap:4px;margin:-6px 0 18px;padding:4px;border-radius:14px;background:var(--panel);border:1px solid var(--line);width:max-content;max-width:100%;overflow-x:auto}
+.subtabs.on{display:flex}
+.subtabs button{padding:8px 16px;border-radius:10px;font-weight:600;font-size:13.5px;color:var(--muted);white-space:nowrap}
+.subtabs button:hover{color:var(--text);background:var(--raised)}
+.subtabs button.on{color:#0c1220;background:var(--gold)}
+'''
+
+JS10 = r'''
+// ---------------- sidebar groups: fewer icons, related pages side by side
+const HUBS = [
+  {key:'home', label:'Home', pages:[['home','Home']]},
+  {key:'play', label:'Play', pages:[['mayhem','Champ select & builds'],['live','Live game'],['livebuild','Live build']]},
+  {key:'champs', label:'Champions', pages:[['champs','Champions']]},
+  {key:'you', label:'You', pages:[['profile','Profile'],['stats','My stats'],['games','Games & damage'],['friends','Friends']]},
+  {key:'fun', label:'Fun', pages:[['fun','Fun'],['showdown','Party Showdown']]},
+  {key:'clips', label:'Clips', pages:[['clips','Clips']]},
+  {key:'settings', label:'Settings', pages:[['settings','Settings'],['help','Help']]}];
+const hubOf = p => HUBS.find(h => h.pages.some(x => x[0] === p)) || HUBS[0];
+function hubLast(h){ try { const p = localStorage.getItem('lolstat.hub.' + h.key); if (p && h.pages.some(x => x[0] === p)) return p; } catch(e){} return h.pages[0][0]; }
+(function setupHubs(){
+  const rail = document.querySelector('.rail'), spacer = rail.querySelector('.spacer');
+  const btn = p => rail.querySelector(`.nav[data-page="${p}"]`);
+  HUBS.forEach(h => {
+    const main = btn(h.pages[0][0]); if (!main) return;
+    main.dataset.hub = h.key; main.setAttribute('aria-label', h.label);
+    const tip = main.querySelector('.tip'); if (tip) tip.textContent = h.label;
+    main.onclick = () => go(hubLast(h));
+    rail.insertBefore(main, spacer);
+    h.pages.slice(1).forEach(([p]) => { const b = btn(p); if (b) b.remove(); });
+  });
+  const bar = document.createElement('div'); bar.className = 'subtabs'; bar.id = 'subtabs'; bar.setAttribute('role', 'tablist');
+  const top = document.querySelector('main .top'); top.parentNode.insertBefore(bar, top.nextSibling);
+})();
+function drawSubtabs(p){
+  const h = hubOf(p), bar = q('#subtabs');
+  bar.classList.toggle('on', h.pages.length > 1);
+  bar.innerHTML = h.pages.length > 1 ? h.pages.map(([k, t]) => `<button role="tab" aria-selected="${k === p}" class="${k === p ? 'on' : ''}" onclick="go('${k}')">${t}</button>`).join('') : '';
+}
+const _go10 = go;
+go = function(p){
+  _go10(p);
+  const h = hubOf(p);
+  document.querySelectorAll('.nav').forEach(b => b.classList.toggle('on', b.dataset.hub === h.key));
+  try { localStorage.setItem('lolstat.hub.' + h.key, p); } catch(e){}
+  drawSubtabs(p);
+  if (h.pages.length > 1) q('#title').textContent = h.label;
+};
+const _pt10 = pageTitle;
+pageTitle = function(p){ const h = hubOf(p); return h.pages.length > 1 ? h.label : _pt10(p); };
+drawSubtabs(typeof page !== 'undefined' ? page : 'home');
+'''
+
+
+def extend10(html):
+    html = html.replace('''/* champ select */''', CSS10 + '''/* champ select */''', 1)
+    assert html.count('let lastTick = 0;') == 1
+    html = html.replace('''let lastTick = 0;''', JS10 + '''let lastTick = 0;''', 1)
     return html
