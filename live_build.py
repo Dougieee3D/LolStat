@@ -169,6 +169,7 @@ def analyze(svc):
         threat = ("hp", lambda it: {"maxhp", "curhp"} & set(it.get("feats") or []))
     elif healers or prof.get("heal", 0) >= 1.5:
         threat = ("heal", lambda it: "antiheal" in (it.get("feats") or []))
+    lineup = None
     if threat:
         plan = [str(i["id"]) for i in todo[:2]]
         covered = any(threat[1](data["items"].get(i) or {"stats": {}, "feats": []}) for i in owned + plan)
@@ -195,6 +196,46 @@ def analyze(svc):
     if not reasons and out["next"]:
         reasons.append(f"{out['next']['name']} adds the most damage against what they have right now")
     out["reasons"] = reasons[:3]
+
+    # ---- your whole build: starts as the build you locked in (it matches your item sets) and changes as they build
+    try:
+        base = (svc.builds() or [best])[0]
+    except Exception:
+        base = best
+    border = lambda bb: ([bb["items"][0]] + ([bb["boots"]] if bb.get("boots") else []) + bb["items"][1:]) if bb.get("items") else []
+    base_ids = [str(i["id"]) for i in border(base)]
+    lineup_now = lineup if out.get("counter") and lineup else todo
+    done_ids = [i for i in owned if i in data["items"] and _gold(data, i) >= 700 or (data["items"].get(i) or {}).get("boots")]
+    plan, seen = [], set()
+    for i in [x for x in base_ids if x in done_ids] + [x for x in done_ids if x not in base_ids]:   # what you already have
+        if i not in seen and len(plan) < 6:
+            seen.add(i)
+            plan.append(dict(svc.item_view(_info(data, i)), state="owned"))
+    for it in lineup_now or []:
+        i = str(it["id"])
+        if i in seen or len(plan) >= 6:
+            continue
+        seen.add(i)
+        row = dict(svc.item_view(dict(it)), state="later")
+        is_counter = out.get("counter") == row.get("name") and out["reasons"]
+        if i not in base_ids:
+            why = (out['reasons'][0].split(':')[0] if is_counter else it.get("why") or "Better against what they have now")
+            row.update(changed=True, why=why)
+        elif is_counter:
+            row.update(moved=True, why=f"Moved up: {out['reasons'][0].split(':')[0]}")
+        plan.append(row)
+    planned = {str(r["id"]) for r in plan}
+    dropped = [x for x in base_ids if x not in planned]          # what each new item replaces
+    for r in plan:
+        if r.get("changed"):
+            r["was"] = _info(data, dropped.pop(0))["name"] if dropped else ""
+    nxt_id = str((out["next"] or {}).get("id", ""))
+    for row in plan:
+        if row["state"] == "later" and str(row["id"]) == nxt_id:
+            row["state"] = "next"
+            break
+    out["plan"] = plan
+    out["changes"] = sum(1 for r in plan if r.get("changed"))
 
     # are you ahead? item gold compared with the enemy team
     mine = _item_value(data, owned)

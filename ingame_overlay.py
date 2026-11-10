@@ -246,6 +246,7 @@ class InGameLayer(threading.Thread):
         self.raw_cv.bind("<B1-Motion>", self._panel_drag)
         self.raw_cv.bind("<ButtonRelease-1>", self._panel_release)
         self.raw_cv.bind("<Control-MouseWheel>", self._panel_wheel)
+        self.raw_cv.bind("<MouseWheel>", self._panel_scroll)
         self.panel.withdraw()
         self.root.after(100, lambda: _style(self.panel))
         self.hit = []     # clickable areas: (x0, y0, x1, y1, action)
@@ -336,23 +337,30 @@ class InGameLayer(threading.Thread):
         self._draw_panel(force=True)
 
     def _live_page(self, items, lb, y, W):
-        """Live build: what to buy next to stay ahead of what they're building. Changes as the game goes."""
+        """Live build: your whole build, starting as the one you locked in and changing as they build."""
         head = lambda t, col=None: items.append(("text", 18, y + 6, t, col or MUTED, ("Segoe UI Semibold", 8), "w"))
         if not lb:
-            items.append(("text", 18, y + 4, "Shows once your game has started.", MUTED, ("Segoe UI", 9), "w"))
+            items.append(("text", 18, y + 4, "Working it out…", MUTED, ("Segoe UI", 9), "w"))
             return y + 24
-        if lb.get("done") or not lb.get("next"):
-            items.append(("text", 18, y + 4, "Your build is complete.", TEXT, ("Segoe UI", 9), "w"))
-            y += 24
-        else:
-            head("Next buy", GOLD); y += 16
-            af = lb.get("afford") or {}
-            items.append(("item", y, dict(lb["next"], why=af.get("text", ""), why_color=TEAL if af.get("now") else None))); y += 30
-            if lb.get("then"):
-                head("Then"); y += 16
-                for it in lb["then"]:
-                    items.append(("item", y, dict(it, why=""))); y += 30
+        plan = lb.get("plan") or []
+        n = lb.get("changes") or 0
+        head(f"Your build now  ·  {n} change{'s' if n != 1 else ''} for this game" if n else "Your build now  ·  same as your item set"); y += 18
+        af = lb.get("afford") or {}
+        for it in plan:
+            st = it.get("state")
+            line = ""
+            if st == "next":
+                line = af.get("text", "")
+            elif it.get("changed"):
+                line = (f"Instead of {it['was']}: " if it.get("was") else "") + it.get("why", "")
+            elif it.get("moved"):
+                line = it.get("why", "")
+            col = TEAL if (st == "next" and af.get("now")) or it.get("changed") else None
+            items.append(("plan", y, dict(it, why_line=line, why_color=col))); y += 32
+        if not plan:
+            items.append(("text", 18, y + 4, "Your build is complete.", TEXT, ("Segoe UI", 9), "w")); y += 22
         if lb.get("reasons"):
+            y += 2
             head("Why"); y += 16
             for r in lb["reasons"]:
                 for line in _wrap(r, 48)[:2]:
@@ -586,7 +594,7 @@ class InGameLayer(threading.Thread):
 
     def _panel_press(self, e):
         ex, ey = e.x / self.pk, e.y / self.pk
-        h = getattr(self, "_panel_h", 0)
+        h = getattr(self, "_view_h", getattr(self, "_panel_h", 0))
         if ex >= PANEL_W - 22 and ey >= h - 22:           # the resize grip
             self._rs = {"x": e.x_root, "w": PANEL_W * self.pk}
         else:
@@ -607,8 +615,29 @@ class InGameLayer(threading.Thread):
     def _panel_wheel(self, e):
         self._set_panel_scale(self._ps() + (0.05 if e.delta > 0 else -0.05), save=True)
 
+    def _panel_scroll(self, e):
+        H, view = getattr(self, "_panel_h", 0), getattr(self, "_view_h", 0)
+        if H <= view:
+            return
+        self._scroll = max(0, min(H - view, getattr(self, "_scroll", 0) + (-48 if e.delta > 0 else 48)))
+        self.raw_cv.yview_moveto(self._scroll / H)
+        self._place_grip()
+
+    def _place_grip(self):
+        """The resize grip and the scroll hint stay on the visible bottom edge."""
+        cv, W = self.raw_cv, PANEL_W
+        cv.delete("grip")
+        k = self.pk
+        bottom = getattr(self, "_scroll", 0) + getattr(self, "_view_h", 0)
+        for d in (6, 10, 14):                       # drag it, or Ctrl + mouse wheel
+            cv.create_line((W - d) * k, (bottom - 4) * k, (W - 4) * k, (bottom - d) * k, fill=MUTED, width=1, tags="grip")
+        if bottom < getattr(self, "_panel_h", 0) - 2:
+            cv.create_rectangle(2 * k, (bottom - 22) * k, (W - 2) * k, (bottom - 1) * k, fill=GLASS, outline="", tags="grip")
+            cv.create_text(W / 2 * k, (bottom - 11) * k, text="▼  scroll for more" + ("  ·  Live build" if self.settings.get("live_build_on", True) else ""),
+                           fill=MUTED, font=("Segoe UI", max(6, int(7 * k))), tags="grip")
+
     def _panel_click(self, e):
-        ex, ey = e.x / self.pk, e.y / self.pk
+        ex, ey = e.x / self.pk, e.y / self.pk + getattr(self, "_scroll", 0)
         for x0, y0, x1, y1, action in self.hit:
             if x0 <= ex <= x1 and y0 <= ey <= y1:
                 action()
@@ -622,11 +651,11 @@ class InGameLayer(threading.Thread):
         st = self.state or {}
         S = self.settings
         live_on = S.get("live_build_on", True)
-        page = S.get("panel_page", "builds") if live_on else "builds"
+        page = "builds"
         stat_keys = [k for k in ("kda", "cs", "csmin", "kp", "gold", "level") if S.get("ov_show_" + k)]
         sig = json.dumps([(st.get("champion") or {}).get("name"), st.get("builds_locked"), self.build_idx, page, live_on,
                           [[b.get("style"), [i.get("id") for i in b.get("items") or []]] for b in st.get("builds") or []],
-                          st.get("live_build") if page == "live" else None,
+                          st.get("live_build") if live_on else None,
                           [st.get("stats"), st.get("level"), st.get("game_time", 0) // 60] if stat_keys else None,
                           [c.get("name") for c in st.get("chosen") or []] if S.get("ov_show_augments") else None,
                           [S.get("ov_show_steps", True), S.get("ov_show_buynow", True)] + stat_keys], default=str)
@@ -658,12 +687,8 @@ class InGameLayer(threading.Thread):
             names = ", ".join(c.get("name", "") for c in st.get("chosen"))
             items.append(("text", 16, y + 2, (names if len(names) < 52 else names[:50] + "…"), MUTED, ("Segoe UI", 8), "w"))
             y += 18
-        if live_on:
-            items.append(("pages", y, page)); y += 28
         builds = st.get("builds") or []
-        if page == "live":
-            y = self._live_page(items, st.get("live_build"), y, W)
-        elif builds:
+        if builds:
             self.build_idx = min(self.build_idx, len(builds) - 1)
             items.append(("tabs", y, len(builds))); y += 28
             b = builds[self.build_idx]
@@ -702,14 +727,29 @@ class InGameLayer(threading.Thread):
             y += 6
         else:
             items.append(("text", 18, y, "Builds show once your champion is known.", MUTED, ("Segoe UI", 9), "w")); y += 22
+        if live_on and st.get("live"):
+            # Live build sits under your builds: scroll down to it
+            items.append(("rule", y + 4)); y += 14
+            items.append(("text", 16, y + 4, "Live build", GOLD, ("Segoe UI Semibold", 10), "w"))
+            items.append(("text", W - 18, y + 4, "adjusts as they build", MUTED, ("Segoe UI", 7), "e")); y += 20
+            y = self._live_page(items, st.get("live_build"), y, W)
         y += 6
         H = y
         self._panel_h = H
-        self.panel.geometry(f"{int(W * self.pk)}x{int(H * self.pk)}")
-        cv.configure(height=H)
+        # never taller than the screen: the rest scrolls (mouse wheel)
+        try:
+            ml, mt, mr, mb = monitor_area(self.btn.winfo_x(), self.btn.winfo_y())
+            max_h = max(220, (mb - mt) * 0.82 / self.pk)
+        except Exception:
+            max_h = 760
+        view = min(H, max_h)
+        self._view_h = view
+        self._scroll = max(0, min(getattr(self, "_scroll", 0), H - view))
+        self.panel.geometry(f"{int(W * self.pk)}x{int(view * self.pk)}")
+        cv.configure(height=view)
+        self.raw_cv.configure(scrollregion=(0, 0, int(W * self.pk), int(H * self.pk)))
+        self.raw_cv.yview_moveto(self._scroll / H if H else 0)
         _round(cv, 1, 1, W - 1, H - 1, 14, fill=GLASS, outline=EDGE, width=1)
-        for d in (6, 10, 14):                               # resize grip (drag it, or Ctrl + mouse wheel)
-            cv.create_line(W - d, H - 4, W - 4, H - d, fill=MUTED, width=1)
         for it in items:
             k = it[0]
             if k == "text":
@@ -744,6 +784,29 @@ class InGameLayer(threading.Thread):
                                    font=("Segoe UI Semibold" if on else "Segoe UI", 9))
                     self.hit.append((x, yy, x + tw, yy + 22, lambda i=i: self._set_build(i)))
                     x += tw + 4
+            elif k == "rule":
+                _, yy = it
+                cv.create_line(14, yy, W - 14, yy, fill=EDGE, width=1)
+            elif k == "plan":
+                _, yy, itm = it
+                ic = self._icon(itm.get("icon"))
+                stt = itm.get("state")
+                if stt == "next":
+                    _round(cv, 10, yy - 3, W - 10, yy + 27, 8, fill="#1d2230", outline=GOLD)
+                if ic:
+                    cv.create_image(28, yy + 12, image=ic)
+                else:
+                    _round(cv, 16, yy, 40, yy + 24, 6, fill=EDGE, outline="")
+                name_col = MUTED if stt == "owned" else TEXT
+                cv.create_text(48, yy + 6, text=itm["name"], fill=name_col, font=("Segoe UI Semibold", 9), anchor="w")
+                tag = {"owned": ("✓", TEAL), "next": ("NEXT", GOLD)}.get(stt)
+                if itm.get("changed") and stt != "owned":
+                    tag = ("NEW", TEAL)
+                if tag:
+                    cv.create_text(W - 18, yy + 6, text=tag[0], fill=tag[1], font=("Segoe UI Semibold", 7), anchor="e")
+                sub = itm.get("why_line", "")
+                sub = sub if len(sub) < 52 else sub[:50] + "…"
+                cv.create_text(48, yy + 19, text=sub, fill=itm.get("why_color") or MUTED, font=("Segoe UI", 7), anchor="w")
             elif k == "pages":
                 _, yy, cur = it
                 x = 14
@@ -756,7 +819,7 @@ class InGameLayer(threading.Thread):
                     self.hit.append((x, yy, x + tw, yy + 22, lambda key=key: self._set_page(key)))
                     x += tw + 6
             elif k == "item":
-                _, yy, itm = it
+                _, yy, itm = it  # noqa
                 ic = self._icon(itm.get("icon"))
                 if ic:
                     cv.create_image(28, yy + 12, image=ic)
@@ -774,3 +837,4 @@ class InGameLayer(threading.Thread):
                 _round(cv, x + 3, yy + 3, x + 27, yy + 19, 5, fill=GRADE.get(g, DIM), outline="")
                 cv.create_text(x + 15, yy + 11, text=g, fill="#0c1220", font=("Segoe UI Black", 8))
                 cv.create_text(x + 31, yy + 11, text=c["name"], fill=TEXT, font=("Segoe UI", 8), anchor="w")
+        self._place_grip()

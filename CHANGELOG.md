@@ -1,5 +1,13 @@
 # LoLStat patch notes
 
+## LoLStat 4.3.0 (2026-11-10)
+
+Live build now shows your whole build and adjusts it as the game goes, at the bottom of the in-game panel.
+
+- **Live build in the panel:** No more switching pages: Live build sits under your builds in the in-game panel. Scroll down with the mouse wheel to reach it. The panel never gets taller than your screen.
+- **Your whole build:** Live build now shows all six items, not just the next buy. It starts as the build you locked in (the same as your item set), then adjusts as the game goes: items you have are ticked, the next buy is highlighted with how much gold you need, and any item that changes is marked NEW with what it replaces and why (like "Instead of Stormrazor: armor pen vs Malphite, Ornn").
+- **Live build page:** The app's Live build page shows the same full build, with what each enemy is building.
+
 ## LoLStat 4.2.2 (2026-11-09)
 
 Item sets in the familiar layout, and other apps' item sets cleaned up.

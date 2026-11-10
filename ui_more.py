@@ -1159,9 +1159,8 @@ SETTINGS9 = r'''
       <div class="muted" style="font-size:12.5px;margin-bottom:6px">Choose what the in-game panel shows. Your builds are always there.</div>
       <div class="auto" id="setPanel"></div>
       <h2>Live build</h2>
-      <div class="muted" style="font-size:12.5px;margin-bottom:6px">A second page in the in-game panel (and in the app) that watches everyone's items and tells you what to buy next to stay ahead. Your locked builds stay as they are.</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px">At the bottom of the in-game panel (scroll down) and on its own page in the app: your whole build, starting as the one you locked in and changing as the enemy team builds. Your item sets don't change.</div>
       <div class="auto" id="setLive"></div>
-      <div class="set"><div><b>Open the panel on</b><p>The page the in-game panel shows first.</p></div><select id="panelPage"><option value="builds">Builds</option><option value="live">Live build</option></select></div>
     </div>'''
 
 NAV9 = r'''  <button class="nav" data-page="livebuild" aria-label="Live build"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span class="tip">Live build</span></button>
@@ -1207,7 +1206,12 @@ CSS9 = r'''
 .lb-ahead{font-size:26px;font-weight:800}.lb-ahead.up{color:var(--teal)}.lb-ahead.down{color:#ff8a8a}
 .lb-enemy{display:grid;grid-template-columns:140px 1fr 150px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
 .lb-enemy:last-child{border:0}.lb-enemy .its{display:flex;gap:4px;flex-wrap:wrap}.lb-enemy .its img{width:28px;height:28px;border-radius:6px}
-@media (max-width:900px){.lb-grid{grid-template-columns:1fr}}
+.lb-plan{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.lb-row{display:grid;grid-template-columns:22px 40px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:var(--raised);font-size:13.5px}
+.lb-row img{width:40px;height:40px;border-radius:8px}.lb-n{color:var(--muted);font-weight:700;text-align:center}
+.lb-row.owned{opacity:.55}.lb-row.next{box-shadow:inset 0 0 0 2px var(--gold)}.lb-row.changed .lb-tag{color:var(--teal)}
+.lb-tag{font-size:11px;font-weight:800;color:var(--gold)}
+@media (max-width:900px){.lb-grid,.lb-plan{grid-template-columns:1fr}}
 '''
 
 JS9 = r'''
@@ -1222,7 +1226,7 @@ const SET_PAGES = [
   ['showdown','Party Showdown','Best of 3 or best of 5','⚔'],
   ['safety','Backup & safety','Backups, safe mode and cleanup','⛨'],
   ['about','Help & about','Troubleshooting and version','?']];
-const SET_RULES = [[/^Auto-accept/,'automation'],[/^In-game overlay$|^In-game panel|^Read augment cards|^Hotkey|^Panel content|^Live build|^Open the panel/,'overlay'],
+const SET_RULES = [[/^Auto-accept/,'automation'],[/^In-game overlay$|^In-game panel|^Read augment cards|^Hotkey|^Panel content|^Live build/,'overlay'],
   [/^Item sets in the League|^Item sets from other apps|^Clean up item sets|^Champ select helpers|^Favorite champions/,'automation'],[/^Game data|^Window and performance|^Updates/,'general'],
   [/^Appearance|^Champion themes|^Custom theme|^Accessibility/,'look'],[/^Notifications|^Wellbeing/,'notify'],[/^Party Showdown/,'showdown'],
   [/^Backup and restore|^Safety/,'safety'],[/^Clips/,'clips']];
@@ -1286,8 +1290,7 @@ function drawNewSettings(st){
     ['ov_show_kda','KDA','Kills / deaths / assists'],['ov_show_cs','CS','Minions and monsters'],['ov_show_csmin','CS per minute',''],['ov_show_kp','Kill participation','Share of your team’s kills you took part in'],
     ['ov_show_gold','Gold','Your current gold'],['ov_show_level','Level',''],['ov_show_augments','Your augments','The augments you picked (ARAM Mayhem)']]);
   if (q('#setClean')) q('#setClean').innerHTML = toggleRow(st, [['itemsets_clean_others','Remove other apps\u2019 item sets automatically','When LoLStat saves your item sets. Your own sets stay']]);
-  if (q('#setLive')) q('#setLive').innerHTML = toggleRow(st, [['live_build_on','Live build','Show the Live build page in the panel and in the app']]);
-  const pp = q('#panelPage'); if (pp && document.activeElement !== pp) pp.value = st.settings.panel_page || 'builds';
+  if (q('#setLive')) q('#setLive').innerHTML = toggleRow(st, [['live_build_on','Live build','Show Live build at the bottom of the in-game panel']]);
   // update ready: ask once per version
   const pill = q('#updPill'); if (pill){ pill.style.display = (u.status === 'available' || u.status === 'later' || u.status === 'downloading' || u.status === 'installing') ? 'inline-flex' : 'none'; pill.textContent = u.status === 'downloading' ? `Updating ${u.pct || 0}%` : 'Update ready'; }
   const m = q('#updModal');
@@ -1318,6 +1321,11 @@ function drawLiveBuild(st){
   else if (!lb) h += `<div class="sd-hero"><h3>Starts with your game</h3><p>Once you're in a game, LoLStat reads every player's items, your gold and your augments, and tells you what to buy next to keep your damage ahead of what they're building.</p></div>`;
   else {
     const a = lb.ahead, af = lb.afford || {};
+    const n = lb.changes || 0;
+    h += `<div class="box" style="margin-top:16px"><div class="cl-head"><h2 style="margin:0">Your build now</h2><span class="muted" style="font-size:12.5px">${n ? n + ' change' + (n === 1 ? '' : 's') + ' from your item set for this game' : 'Same as your item set so far'}</span></div>
+      <div class="lb-plan">${(lb.plan || []).map((it, i) => `<div class="lb-row ${it.state}${it.changed ? ' changed' : ''}"><span class="lb-n">${i + 1}</span>${img(it.icon,'',40)}<div><b>${esc(it.name)}</b>
+        <div class="muted" style="font-size:12px">${it.state === 'owned' ? 'You have it' : it.state === 'next' ? esc((lb.afford || {}).text || '') : it.changed ? (it.was ? 'Instead of ' + esc(it.was) + ': ' : '') + esc(it.why || '') : it.moved ? esc(it.why) : 'From your item set'}</div></div>
+        <span class="lb-tag">${it.state === 'owned' ? '✓' : it.state === 'next' ? 'NEXT' : it.changed ? 'NEW' : ''}</span></div>`).join('')}</div></div>`;
     h += `<div class="lb-grid"><div class="box"><h2>Next buy</h2>${lb.next ? `<div class="lb-next">${img(lb.next.icon,'',64)}<div><b>${esc(lb.next.name)}</b><div class="lb-afford ${af.now ? 'now' : ''}">${esc(af.text || '')}</div></div></div>
       ${lb.then && lb.then.length ? `<div class="muted" style="font-size:12px;margin-top:14px">Then</div><div class="lb-then">${lb.then.map(i => `<span>${img(i.icon,'',30)}${esc(i.name)}</span>`).join('')}</div>` : ''}` : '<div class="muted">Your build is complete.</div>'}
       ${lb.reasons && lb.reasons.length ? `<h2 style="margin-top:18px">Why</h2><ul class="lb-why" style="padding-left:18px;margin:0">${lb.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</div>
@@ -1350,6 +1358,6 @@ def extend9(html):
     html = html.replace('''<button class="btn" onclick="go('settings');setTimeout(()=>q('#clSettings').scrollIntoView({behavior:'smooth'}),80)">Clip settings</button>''',
                         '''<button class="btn" onclick="go('settings');showSetPage('clips')">Clip settings</button>''', 1)
     html = html.replace('''q('#panelPage')''', '''q('#panelPage')''')
-    html = html.replace('''let lastTick = 0;''', '''setTimeout(() => { buildSettingsPages(); const pp = q('#panelPage'); if (pp) pp.onchange = () => act('panel_page', {value: pp.value}); }, 0);
+    html = html.replace('''let lastTick = 0;''', '''setTimeout(() => buildSettingsPages(), 0);
 let lastTick = 0;''', 1)
     return html
