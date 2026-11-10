@@ -1159,16 +1159,11 @@ SETTINGS9 = r'''
       <div class="muted" style="font-size:12.5px;margin-bottom:6px">Choose what the in-game panel shows. Your builds are always there.</div>
       <div class="auto" id="setPanel"></div>
       <h2>Live build</h2>
-      <div class="muted" style="font-size:12.5px;margin-bottom:6px">At the bottom of the in-game panel (scroll down) and on its own page in the app: your whole build, starting as the one you locked in and changing as the enemy team builds. Your item sets don't change.</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px">At the bottom of the in-game panel (scroll down) and on the Live game page: your whole build, starting as the one you locked in and changing as the enemy team builds. Your item sets don't change.</div>
       <div class="auto" id="setLive"></div>
     </div>'''
 
-NAV9 = r'''  <button class="nav" data-page="livebuild" aria-label="Live build"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg><span class="tip">Live build</span></button>
-'''
-
 PAGE9 = r'''
-  <!-- LIVE BUILD -->
-  <section class="page" id="p-livebuild"><div id="lbOut"></div></section>
   <div class="modal" id="updModal" role="dialog" aria-modal="true" aria-labelledby="updTitle"><div class="sheet" style="max-width:640px">
     <div style="display:flex;align-items:center;gap:12px"><img src="/logo.png" alt="" style="width:40px;height:40px;border-radius:10px"><div><h2 id="updTitle" style="margin:0"></h2><div class="muted" style="font-size:12.5px" id="updSub"></div></div></div>
     <div id="updNotes" class="upd-notes"></div>
@@ -1312,10 +1307,10 @@ function drawUpdate(u){
 
 // ---------------- Live build page (also in the in-game panel)
 function drawLiveBuild(st){
-  const el = q('#lbOut'); if (!el || page !== 'livebuild') return;
+  const el = q('#lbOut'); if (!el || page !== 'live') return;
   const lb = st.live_build || (st.mayhem && st.mayhem.live_build);
   const on = st.settings.live_build_on !== false;
-  let h = `<div class="box"><div class="cl-head"><div><h2 style="margin:0">Live build</h2><div class="muted" style="font-size:12.5px">What to buy next to stay ahead, from everyone's items as the game goes. Your locked builds and item sets don't change.</div></div>
+  let h = `<div class="box"><div class="cl-head"><div><h2 style="margin:0">Live build</h2><div class="muted" style="font-size:12.5px">Your whole build, adjusting as everyone's items change. Also at the bottom of the in-game panel. Your item sets don't change.</div></div>
     <button class="btn ${on ? '' : 'gold'}" onclick="act('setting',{name:'live_build_on'})">${on ? 'Turn off' : 'Turn on'}</button></div></div>`;
   if (!on) h += `<div class="box" style="margin-top:16px"><div class="muted">Live build is off. Turn it on to see it here and in the in-game panel.</div></div>`;
   else if (!lb) h += `<div class="sd-hero"><h3>Starts with your game</h3><p>Once you're in a game, LoLStat reads every player's items, your gold and your augments, and tells you what to buy next to keep your damage ahead of what they're building.</p></div>`;
@@ -1343,17 +1338,19 @@ def extend9(html):
     a = '''    <p class="fine" style="margin-top:18px" id="about"></p>'''
     assert html.count(a) == 1
     html = html.replace(a, SETTINGS9 + "\n" + a, 1)
-    html = html.replace('''  <button class="nav" data-page="fun"''', NAV9 + '''  <button class="nav" data-page="fun"''', 1)
     html = html.replace('''    <span class="pill" id="patchPill">Patch</span>''', '''    <span class="pill" id="patchPill">Patch</span>
     <span class="pill" id="updPill" onclick="openUpdate(S.update||{})">Update ready</span>''', 1)
     html = html.replace('''  <!-- GAMES -->''', PAGE9 + '''  <!-- GAMES -->''', 1)
+    # Live build lives at the bottom of the Live game page
+    lv = '''    <div class="scout" id="scout"></div>\n  </section>'''
+    assert html.count(lv) == 1
+    html = html.replace(lv, '''    <div class="scout" id="scout"></div>\n    <div id="lbOut" style="margin-top:20px"></div>\n  </section>''', 1)
     html = html.replace('''/* champ select */''', CSS9 + '''/* champ select */''', 1)
     html = html.replace('''let lastTick = 0;''', JS9 + '''let lastTick = 0;''', 1)
     html = html.replace('''drawSdHome(st); drawSdSettings(st); ovLookFill(st); drawClipSettings(st);''',
                         '''drawSdHome(st); drawSdSettings(st); ovLookFill(st); drawClipSettings(st); drawNewSettings(st); drawLiveBuild(st);''', 1)
-    html = html.replace('''if (p==='clips'){ drawClips(); loadClips(); } }''', '''if (p==='clips'){ drawClips(); loadClips(); } if (p==='livebuild' && S) drawLiveBuild(S); if (p==='settings'){ buildSettingsPages(); if (S){ window._setQolSig = null; drawSetQol(S); drawNewSettings(S); } } }''', 1)
-    html = html.replace('''clips:'Clips',''', '''clips:'Clips', livebuild:'Live build',''', 1)
-    html = html.replace('''['clips','Clips'],''', '''['clips','Clips'],['livebuild','Live build'],''', 1)
+    html = html.replace('''if (p==='clips'){ drawClips(); loadClips(); } }''', '''if (p==='clips'){ drawClips(); loadClips(); } if (p==='live' && S) drawLiveBuild(S); if (p==='settings'){ buildSettingsPages(); if (S){ window._setQolSig = null; drawSetQol(S); drawNewSettings(S); } } }''', 1)
+    html = html.replace('''['clips','Clips'],''', '''['clips','Clips'],['live','Live build'],''', 1)
     html = html.replace('''['Clip settings','#clSettings'],''', '''['Clip settings','#clQuality'],['Updates','#updState'],['In-game panel content','#setPanel'],['Live build settings','#setLive'],''', 1)
     html = html.replace('''<button class="btn" onclick="go('settings');setTimeout(()=>q('#clSettings').scrollIntoView({behavior:'smooth'}),80)">Clip settings</button>''',
                         '''<button class="btn" onclick="go('settings');showSetPage('clips')">Clip settings</button>''', 1)

@@ -12,6 +12,14 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.3.1",
+        "date": "2026-11-10",
+        "summary": "Live build moved to the Live game page.",
+        "changes": [
+            ("Live game", "Live build is no longer a page of its own: your whole build, next buy, what changed and why, and what each enemy is building now sit at the bottom of the Live game page, under scouting."),
+        ],
+    },
+    {
         "version": "4.3.0",
         "date": "2026-11-10",
         "summary": "Live build now shows your whole build and adjusts it as the game goes, at the bottom of the in-game panel.",

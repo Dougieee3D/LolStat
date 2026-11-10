@@ -1,5 +1,11 @@
 # LoLStat patch notes
 
+## LoLStat 4.3.1 (2026-11-10)
+
+Live build moved to the Live game page.
+
+- **Live game:** Live build is no longer a page of its own: your whole build, next buy, what changed and why, and what each enemy is building now sit at the bottom of the Live game page, under scouting.
+
 ## LoLStat 4.3.0 (2026-11-10)
 
 Live build now shows your whole build and adjusts it as the game goes, at the bottom of the in-game panel.
