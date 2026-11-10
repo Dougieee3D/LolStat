@@ -1150,7 +1150,7 @@ loop();
 
 import ui_more  # noqa: E402  (extra screens added onto the app page)
 from lolstat_assets import APP_VERSION as _V  # noqa: E402
-APP_HTML = ui_more.extend10(ui_more.extend9(ui_more.extend8(ui_more.extend7(ui_more.extend6(ui_more.extend5(ui_more.extend4(ui_more.extend3(ui_more.extend2(ui_more.extend(APP_HTML))), _V)))))))
+APP_HTML = ui_more.extend11(ui_more.extend10(ui_more.extend9(ui_more.extend8(ui_more.extend7(ui_more.extend6(ui_more.extend5(ui_more.extend4(ui_more.extend3(ui_more.extend2(ui_more.extend(APP_HTML))), _V))))))))
 MINI_HTML = ui_more.mini_html(BASE_CSS, COMMON_JS)
 
 OVERLAY_HTML = r"""<!doctype html>

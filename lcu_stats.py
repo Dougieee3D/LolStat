@@ -274,12 +274,80 @@ def friends(lcu_call):
         if not name:
             continue
         lol = f.get("lol") or {}
-        out.append({"name": f"{name}#{tag}" if tag else name, "puuid": f.get("puuid"),
+        out.append({"name": f"{name}#{tag}" if tag else name, "puuid": f.get("puuid"), "icon": f.get("icon"),
                     "status": f.get("availability", "offline"),
                     "playing": lol.get("gameStatus", ""), "champ_id": lol.get("championId") or "",
                     "queue": lol.get("gameQueueType", "")})
     order = {"chat": 0, "online": 0, "dnd": 1, "away": 2, "mobile": 3, "offline": 4}
     out.sort(key=lambda f: (order.get(f["status"], 3), f["name"].lower()))
+    return out
+
+
+def played_with(lcu_call, my_puuid, cache_path, count=60):
+    """Who you play with most: everyone who was on your team in your recent games, with how you do
+    together. Each game is fetched once and kept (games never change)."""
+    import json as _json
+    try:
+        with open(cache_path, encoding="utf-8") as fh:
+            cache = _json.load(fh)
+    except Exception:
+        cache = {}
+    games = _matches(lcu_call, "current-summoner", count)
+    changed = False
+    for g in games:
+        gid = str(g.get("gameId"))
+        if gid in cache:
+            continue
+        try:
+            full = lcu_call("GET", f"/lol-match-history/v1/games/{gid}") or {}
+        except Exception:
+            continue
+        ids = {i.get("participantId"): i.get("player") or {} for i in full.get("participantIdentities") or []}
+        rows = []
+        for p in full.get("participants") or []:
+            pl = ids.get(p.get("participantId")) or {}
+            st = p.get("stats") or {}
+            rows.append({"puuid": pl.get("puuid"), "name": (f"{pl.get('gameName')}#{pl.get('tagLine')}" if pl.get("gameName")
+                                                            else pl.get("summonerName") or ""),
+                         "icon": pl.get("profileIcon"), "team": p.get("teamId"), "win": bool(st.get("win")),
+                         "damage": int(st.get("totalDamageDealtToChampions") or 0),
+                         "k": int(st.get("kills") or 0), "d": int(st.get("deaths") or 0), "a": int(st.get("assists") or 0)})
+        cache[gid] = {"when": int(g.get("gameCreation") or 0), "queue": _queue(g.get("queueId")),
+                      "minutes": round((full.get("gameDuration") or g.get("gameDuration") or 0) / 60, 1), "players": rows}
+        changed = True
+    if changed:
+        keep = dict(sorted(cache.items(), key=lambda kv: -kv[1].get("when", 0))[:300])
+        try:
+            with open(cache_path, "w", encoding="utf-8") as fh:
+                _json.dump(keep, fh)
+        except OSError:
+            pass
+        cache = keep
+    mates = {}
+    for gid, g in cache.items():
+        me = next((p for p in g["players"] if p.get("puuid") == my_puuid), None)
+        if not me:
+            continue
+        for p in g["players"]:
+            if p.get("team") != me.get("team") or p.get("puuid") in (None, my_puuid):
+                continue
+            m = mates.setdefault(p["puuid"], {"puuid": p["puuid"], "name": p["name"], "icon": p.get("icon"), "games": 0,
+                                               "wins": 0, "my_damage": 0, "their_damage": 0, "k": 0, "d": 0, "a": 0, "last": 0})
+            m["games"] += 1
+            m["wins"] += 1 if me["win"] else 0
+            m["my_damage"] += me["damage"]
+            m["their_damage"] += p["damage"]
+            m["k"] += me["k"]; m["d"] += me["d"]; m["a"] += me["a"]
+            if g["when"] > m["last"]:
+                m["last"], m["name"], m["icon"] = g["when"], p["name"] or m["name"], p.get("icon") or m["icon"]
+    out = []
+    for m in mates.values():
+        if m["games"] < 2:          # once is random matchmaking, twice or more is playing together
+            continue
+        n = m["games"]
+        out.append(dict(m, wr=round(m["wins"] / n * 100), my_avg=round(m["my_damage"] / n), their_avg=round(m["their_damage"] / n),
+                        kda=round((m["k"] + m["a"]) / max(1, m["d"]), 2)))
+    out.sort(key=lambda m: (-m["games"], -m["wr"]))
     return out
 
 

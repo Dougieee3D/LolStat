@@ -11,7 +11,7 @@ import time
 import uuid
 
 REMAKE_SECONDS = 300          # games shorter than this are remakes and never count
-HISTORY_KEEP = 60
+HISTORY_KEEP = 1000     # a few years of showdowns: the yearly Hall of Fame needs them
 
 
 def wins_needed(best_of):
@@ -300,10 +300,16 @@ class Showdown:
         sc = self._score(s)
         rec = {"id": s["id"], "best_of": s["best_of"], "winner": s.get("winner"), "ended_early": ended_early,
                "finished": s.get("finished") or time.time(), "games": len(s["rounds"]),
-               "players": [{"puuid": p["puuid"], "name": p["name"], "wins": sc.get(p["puuid"], 0),
-                            "damage": sum(int((r["stats"].get(p["puuid"]) or {}).get("damage") or 0) for r in s["rounds"])}
-                           for p in s["players"]]}
+               "players": [self._player_record(s, p, sc) for p in s["players"]]}
         self.data["history"] = ([rec] + [h for h in self.data["history"] if h.get("id") != s["id"]])[:HISTORY_KEEP]
+
+    def _player_record(self, s, p, sc):
+        pid = p["puuid"]
+        dmg = [int((r["stats"].get(pid) or {}).get("damage") or 0) for r in s["rounds"] if pid in r["stats"]]
+        margins = [self.margin(s, r)[0] for r in s["rounds"] if r.get("counted") and r.get("winner") == pid]
+        return {"puuid": pid, "name": p["name"], "wins": sc.get(pid, 0), "damage": sum(dmg),
+                "played": len(dmg), "best": max(dmg or [0]), "margin_best": max([m for m in margins if m] or [0]),
+                "margin_total": sum(m for m in margins if m)}
 
     def score_text(self, s):
         return "-".join(str(v) for v in sorted(self._score(s).values(), reverse=True))
@@ -313,7 +319,7 @@ class Showdown:
         with self.lock:
             s = self.data.get("series")
             out = {"party": self.party, "me": self.me, "series": None, "history": self.data["history"][:20],
-                   "leaderboard": self.leaderboard(), "best_of_setting": best_of_setting}
+                   "leaderboard": self.leaderboard(), "hall": self.hall_of_fame(), "best_of_setting": best_of_setting}
             if s:
                 sc = self._score(s)
                 need = wins_needed(s["best_of"])
@@ -340,6 +346,53 @@ class Showdown:
                                      leader=leaders[0] if len(leaders) == 1 else None,
                                      counted=sum(1 for r in s["rounds"] if r.get("counted")))
             return out
+
+    @staticmethod
+    def period_start(period, now=None):
+        """Start of this week (Monday), month or year, in your local time. None = all time."""
+        import datetime as _dt
+        d = _dt.datetime.fromtimestamp(now or time.time())
+        d = d.replace(hour=0, minute=0, second=0, microsecond=0)
+        if period == "week":
+            d -= _dt.timedelta(days=d.weekday())
+        elif period == "month":
+            d = d.replace(day=1)
+        elif period == "year":
+            d = d.replace(month=1, day=1)
+        else:
+            return None
+        return d.timestamp()
+
+    def hall_of_fame(self):
+        """The Hall of Fame for this week, this month, this year and all time: titles, games won and every
+        damage stat."""
+        out = {}
+        for period in ("week", "month", "year", "all"):
+            since = self.period_start(period)
+            board = {}
+            for h in self.data["history"]:
+                if since and float(h.get("finished") or 0) < since:
+                    continue
+                for p in h["players"]:
+                    b = board.setdefault(p["puuid"], {"puuid": p["puuid"], "name": p["name"], "series": 0, "titles": 0,
+                                                      "rounds": 0, "played": 0, "damage": 0, "best": 0,
+                                                      "margin_best": 0, "margin_total": 0})
+                    b["name"] = p["name"]
+                    b["series"] += 1
+                    b["rounds"] += p.get("wins", 0)
+                    b["damage"] += p.get("damage", 0)
+                    b["played"] += p.get("played") or h.get("games") or 0
+                    b["best"] = max(b["best"], p.get("best") or 0)
+                    b["margin_best"] = max(b["margin_best"], p.get("margin_best") or 0)
+                    b["margin_total"] += p.get("margin_total") or 0
+                    if h.get("winner") == p["puuid"]:
+                        b["titles"] += 1
+            for b in board.values():
+                b["avg"] = round(b["damage"] / b["played"]) if b["played"] else 0
+                b["win_rate"] = round(b["rounds"] / b["played"] * 100) if b["played"] else 0
+            out[period] = {"since": since, "showdowns": sum(1 for h in self.data["history"] if not since or float(h.get("finished") or 0) >= since),
+                           "board": sorted(board.values(), key=lambda b: (-b["titles"], -b["rounds"], -b["damage"]))}
+        return out
 
     def leaderboard(self):
         board = {}

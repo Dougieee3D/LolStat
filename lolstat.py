@@ -937,6 +937,11 @@ class Handler(BaseHTTPRequestHandler):
                 data = lcu_stats.friends(lcu_call)
             except Exception:
                 data = []
+            ver = mayhem.data.get("patch", "") if mayhem else ""
+            for f in data:
+                f["icon_url"] = (f"https://ddragon.leagueoflegends.com/cdn/{ver}/img/profileicon/{f['icon']}.png"
+                                 if f.get("icon") not in (None, "", -1) and ver else "")
+                f["champ"] = mayhem.champ_name(int(f["champ_id"])) if str(f.get("champ_id") or "").isdigit() and mayhem else ""
             self._send(200, json.dumps(data))
         elif path == "/api/clips":
             self._send(200, json.dumps({"clips": clips.list() if clips else [], "recorder": clips.view() if clips else {}}))
@@ -1433,13 +1438,19 @@ def write_item_sets():
         _put_sets(ours)
     except Exception as e:
         errors.append(e)
-    try:                       # backup: League's own item set files, which the game reads when it loads
-        _write_set_files(champ, ours())
-    except Exception as e:
-        log(f"Couldn't write item set files: {e}")
-        if errors:
+    if not errors:
+        # saved to your account: no backup files, or the shop would show every set twice
+        try:
+            _remove_set_files()
+        except Exception:
+            pass
+    else:
+        try:                   # backup only when the client refused them: League's own item set files
+            _remove_set_files()
+            _write_set_files(champ, ours())
+        except Exception as e:
+            log(f"Couldn't write item set files: {e}")
             raise errors[0]
-    if errors:
         log(f"Item sets: the client refused them ({errors[0]}), saved as League files instead")
     _itemsets.update(sig=sig, written=True, status=f"saved 3 sets for {champ} at {datetime.now().strftime('%I:%M:%S %p')}")
     mayhem.notify(f"3 item sets saved to your client for {champ}")
@@ -1863,6 +1874,12 @@ def friends_loop():
                     s = _friends["cards"]["__me__"]["solo"]
                     if s and s.get("tier") not in ("", "NONE"):
                         _friends["cards"]["__me__"]["rank_score"] = lcu_stats._lp_score(s)
+                if me.get("puuid") and time.time() - _friends.get("mates_t", 0) > 600:   # who you play with most
+                    try:
+                        _friends["mates"] = lcu_stats.played_with(lcu_call, me["puuid"], os.path.join(DATA_DIR, "games_together.json"))
+                    except Exception as e:
+                        log(f"Couldn't read who you play with: {e.__class__.__name__}")
+                    _friends["mates_t"] = time.time()
                 now = time.time()
                 stale = [f for f in _friends["list"][:120]
                          if now - (_friends["cards"].get(f.get("puuid") or f["name"], {}).get("updated") or 0) > FRIEND_REFRESH_MIN * 60]
@@ -1900,7 +1917,18 @@ def friends_board():
     me = _friends["cards"].get("__me__")
     if me:
         rows.append(dict(me, status="chat", playing=state.get("phase", "")))
-    return {"friends": rows, "status": _friends["status"]}
+    mates = _friends.get("mates") or []
+    by_id = {m["puuid"]: m for m in mates}
+    ver = mayhem.data.get("patch", "") if mayhem else ""
+    icon = lambda i: f"https://ddragon.leagueoflegends.com/cdn/{ver}/img/profileicon/{i}.png" if i not in (None, "", -1) and ver else ""
+    for r in rows:
+        m = by_id.get(r.get("puuid"))
+        r["together"] = {k: m[k] for k in ("games", "wins", "wr", "my_avg", "their_avg", "kda", "last")} if m else None
+        f = next((x for x in live.values() if x.get("puuid") == r.get("puuid")), None)
+        r["icon_url"] = icon((f or {}).get("icon"))
+    friend_ids = {f.get("puuid") for f in live.values()}
+    return {"friends": rows, "status": _friends["status"],
+            "mates": [dict(m, friend=m["puuid"] in friend_ids, icon_url=icon(m.get("icon"))) for m in mates[:12]]}
 
 
 # ---------------------------------------------------------------- champion themes

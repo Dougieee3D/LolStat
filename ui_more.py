@@ -730,6 +730,13 @@ CSS5 = r'''
 .sd-win .s{color:#c9d3e6;font-size:14px}
 .sd-win .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
 .sd-trophy{width:40px;height:40px;color:var(--gold);margin-bottom:6px}
+.hof-wrap{overflow-x:auto}
+.hof{display:grid;grid-template-columns:28px minmax(120px,1fr) repeat(8,minmax(74px,auto));gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--line);font-size:13px;min-width:860px}
+.hof:last-child{border:0}.hof.first{background:color-mix(in srgb,var(--gold) 7%,transparent);border-radius:10px}
+.hof span:nth-child(n+3),.hof button{text-align:right;font-variant-numeric:tabular-nums}
+.hof.h{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.hof.h button{font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;padding:0}.hof.h button:hover,.hof.h button.on{color:var(--gold)}
+.hof-top{color:var(--gold);font-weight:700}
 .sd-hof{display:grid;grid-template-columns:28px 1fr 70px 70px 70px 110px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
 .sd-hof:last-child{border:0}.sd-hof.h{color:var(--muted);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 .sd-hof span:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}
@@ -848,13 +855,27 @@ function sdResultText(s){
   return lines.join('\n');
 }
 async function sdCopy(){ try { await navigator.clipboard.writeText(sdResultText(SD.series)); toastMsg('Result copied. Paste it in Discord or your group chat.'); } catch(e){ toastMsg("Couldn't copy the result."); } }
+let hofPeriod = (()=>{ try { return localStorage.getItem('lolstat.hof') || 'week'; } catch(e){ return 'week'; } })();
+let hofSort = 'titles';
+function hofSet(p){ hofPeriod = p; try { localStorage.setItem('lolstat.hof', p); } catch(e){} drawSD(); }
+function hofSortBy(k){ hofSort = k; drawSD(); }
 function sdHall(){
-  const L = SD.leaderboard || [], H = (SD.history || []).filter(h=>h.winner || h.games);
-  if (!L.length) return '';
-  return `<div class="two"><div class="box"><h2>Hall of fame</h2><div class="sd-hof h"><span>#</span><span>Player</span><span>Titles</span><span>Played</span><span>Games won</span><span>Damage</span></div>
-      ${L.slice(0,10).map((b,i)=>`<div class="sd-hof"><b>${i+1}</b><span style="font-weight:600">${esc(b.name)}${b.puuid===SD.me?' <span class="muted" style="font-weight:500">(you)</span>':''}</span><span><b>${b.titles}</b></span><span>${b.series}</span><span>${b.rounds}</span><span>${fmt(b.damage)}</span></div>`).join('')}</div>
-    <div class="box"><div class="cs-head" style="margin:0 0 6px"><h2 style="margin:0">Past showdowns</h2><button class="btn" style="font-size:11.5px;padding:5px 9px" onclick="if(confirm('Clear your showdown history?'))sdAct('sd_clear_history')">Clear</button></div>
-      ${H.slice(0,8).map(h=>{ const w = h.players.find(p=>p.puuid===h.winner); return `<div class="sd-past">${TROPHY.replace('sd-trophy','').replace('<svg','<svg width="18" height="18" style="color:'+(w?'var(--gold)':'var(--muted)')+';flex:none"')}<div><b>${w ? esc(w.name) : 'No winner'}</b><div class="muted" style="font-size:11.5px">${sdDate(h.finished)} · best of ${h.best_of} · ${h.players.map(p=>esc(p.name)).join(', ')}${h.ended_early ? ' · ended early' : ''}</div></div><span class="sc">${h.players.map(p=>p.wins).sort((a,b)=>b-a).join('-')}</span></div>`; }).join('')}</div></div>`;
+  const HF = SD.hall || {}, H = (SD.history || []).filter(h=>h.winner || h.games);
+  if (!H.length) return '';
+  const P = [['week','This week'],['month','This month'],['year','This year'],['all','All time']];
+  const cur = HF[hofPeriod] || {board: []};
+  const cols = [['titles','Titles'],['rounds','Games won'],['played','Played'],['win_rate','Win %'],['damage','Total damage'],['avg','Avg / game'],['best','Best game'],['margin_best','Biggest win']];
+  const B = [...cur.board].sort((a,b) => hofSort === 'titles' ? 0 : (b[hofSort]||0) - (a[hofSort]||0));
+  const top = k => Math.max(0, ...B.map(b => b[k] || 0));
+  const cell = (b,k) => { const v = b[k] || 0; const t = k === 'win_rate' ? v + '%' : fmt(v); return `<span class="${v && v === top(k) && B.length > 1 ? 'hof-top' : ''}">${t}</span>`; };
+  const label = {week:'this week', month:'this month', year:'this year', all:'yet'}[hofPeriod];
+  return `<div class="box"><div class="cs-head" style="margin:0 0 12px"><div><h2 style="margin:0">Hall of fame</h2><div class="muted" style="font-size:12.5px">${cur.showdowns||0} showdown${cur.showdowns===1?'':'s'} ${hofPeriod==='all'?'in total':label}. Click a column to sort.</div></div>
+      <div class="seg">${P.map(([k,t])=>`<button class="${k===hofPeriod?'on':''}" onclick="hofSet('${k}')">${t}</button>`).join('')}</div></div>
+    ${B.length ? `<div class="hof-wrap"><div class="hof h"><span>#</span><span>Player</span>${cols.map(([k,t])=>`<button class="${hofSort===k?'on':''}" onclick="hofSortBy('${k}')">${t}</button>`).join('')}</div>
+      ${B.slice(0,15).map((b,i)=>`<div class="hof${i===0?' first':''}"><b>${i===0?TROPHY.replace('sd-trophy','').replace('<svg','<svg width="16" height="16" style="color:var(--gold)"'):i+1}</b><span style="font-weight:600">${esc(b.name)}${b.puuid===SD.me?' <span class="muted" style="font-weight:500">(you)</span>':''}</span>${cols.map(([k])=>cell(b,k)).join('')}</div>`).join('')}</div>`
+      : `<div class="muted">No showdowns ${label}. Start one and claim the top spot.</div>`}</div>
+    <div class="box" style="margin-top:16px"><div class="cs-head" style="margin:0 0 6px"><h2 style="margin:0">Past showdowns</h2><button class="btn" style="font-size:11.5px;padding:5px 9px" onclick="if(confirm('Clear your showdown history?'))sdAct('sd_clear_history')">Clear</button></div>
+      ${H.slice(0,8).map(h=>{ const w = h.players.find(p=>p.puuid===h.winner); return `<div class="sd-past">${TROPHY.replace('sd-trophy','').replace('<svg','<svg width="18" height="18" style="color:'+(w?'var(--gold)':'var(--muted)')+';flex:none"')}<div><b>${w ? esc(w.name) : 'No winner'}</b><div class="muted" style="font-size:11.5px">${sdDate(h.finished)} · best of ${h.best_of} · ${h.players.map(p=>esc(p.name) + (p.damage ? ' ' + fmt(p.damage) : '')).join(', ')}${h.ended_early ? ' · ended early' : ''}</div></div><span class="sc">${h.players.map(p=>p.wins).sort((a,b)=>b-a).join('-')}</span></div>`; }).join('')}</div>`;
 }
 let sdSig = '';
 function drawSdHome(st){
@@ -1427,4 +1448,123 @@ def extend10(html):
     html = html.replace('''/* champ select */''', CSS10 + '''/* champ select */''', 1)
     assert html.count('let lastTick = 0;') == 1
     html = html.replace('''let lastTick = 0;''', JS10 + '''let lastTick = 0;''', 1)
+    return html
+
+
+# ====================================================================== Profile friend picker, Friends: who you play with
+CSS11 = r'''
+.prof-bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.prof-bar .grow{flex:1;min-width:220px;display:flex;gap:8px}
+.prof-bar .grow input{flex:1}
+.fpick{position:relative}
+.fpick-btn{display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:12px;border:1px solid var(--line2);background:var(--raised);font-weight:600;font-size:13.5px;min-width:190px}
+.fpick-btn:hover{border-color:var(--gold)}
+.fpick-btn .stack{display:flex}.fpick-btn .stack img{width:24px;height:24px;border-radius:50%;border:2px solid var(--raised);margin-left:-8px}.fpick-btn .stack img:first-child{margin-left:0}
+.fpick-btn .chev{margin-left:auto;color:var(--muted)}
+.fpick-pop{display:none;position:absolute;z-index:40;top:calc(100% + 6px);left:0;width:340px;max-height:430px;overflow:hidden;border-radius:14px;background:var(--panel);border:1px solid var(--line2);box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.fpick-pop.on{display:flex;flex-direction:column}
+.fpick-pop input{margin:10px;padding:9px 12px;border-radius:10px;border:1px solid var(--line2);background:var(--raised)}
+.fpick-list{overflow:auto;padding:0 6px 8px}
+.fpick-sec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px 8px 4px}
+.fpick-row{display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;padding:7px 8px;border-radius:10px}
+.fpick-row:hover{background:var(--raised)}
+.fpick-row .av{position:relative;width:36px;height:36px}.fpick-row .av img,.fpick-row .av .ph{width:36px;height:36px;border-radius:50%;background:var(--raised);display:block}
+.fpick-row .av i{position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;border:2px solid var(--panel);background:var(--dim)}
+.fpick-row .av i.on{background:var(--gA)}.fpick-row .av i.ingame{background:var(--gold)}.fpick-row .av i.away{background:#e0a84a}
+.fpick-row b{font-size:13.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fpick-row small{color:var(--muted);font-size:11.5px}
+.fpick-row .tg{font-size:11px;color:var(--muted);text-align:right}
+.mates{display:grid;gap:2px}
+.mate{display:grid;grid-template-columns:40px minmax(140px,1fr) repeat(5,minmax(80px,auto));gap:12px;align-items:center;padding:9px 4px;border-bottom:1px solid var(--line);font-size:13px;cursor:pointer;border-radius:8px}
+.mate:hover{background:var(--raised)}.mate:last-child{border:0}
+.mate.h{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;cursor:default}.mate.h:hover{background:none}
+.mate img,.mate .ph{width:36px;height:36px;border-radius:50%;background:var(--raised)}
+.mate span:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}
+.mate .fb{font-size:10px;font-weight:700;color:var(--teal);margin-left:6px}
+.mates-wrap{overflow-x:auto}.mates-wrap .mate{min-width:720px}
+'''
+
+PROFILE11 = r'''    <div class="box"><div class="prof-bar">
+      <div class="fpick" id="fpick"><button class="fpick-btn" id="fpickBtn" aria-haspopup="listbox"><span class="stack" id="fpickStack"></span><span id="fpickLabel">Friends</span><span class="chev">▾</span></button>
+        <div class="fpick-pop" id="fpickPop" role="listbox"><input id="fpickQ" placeholder="Search friends" aria-label="Search friends"><div class="fpick-list" id="fpickList"></div></div></div>
+      <div class="grow"><input id="lookQ" placeholder="Look up a player: Name#TAG" aria-label="Look up a player"><button class="btn gold" id="lookBtn">Look up</button></div>
+      <button class="btn" id="meBtn">My profile</button>
+      <button class="btn" id="codeBtn" title="Open a friend's shared stats">Share code</button>
+    </div>
+    <div id="codeRow" style="display:none;margin-top:10px"><input id="codeQ" placeholder="Paste a friend's share code" aria-label="Paste a share code" style="width:100%"></div>
+    <div id="friends" style="display:none"></div></div>'''
+
+FRIENDS11 = r'''    <div class="hl" id="frHi"></div>
+    <div class="box" style="margin-top:16px" id="frMatesBox"><div class="cs-head" style="margin:0 0 8px"><div><h2 style="margin:0">Who you play with most</h2><div class="muted" style="font-size:12.5px">From your recent games: everyone who was on your team two or more times.</div></div></div><div id="frMates"><div class="muted">Loading your games…</div></div></div>'''
+
+JS11 = r'''
+// ---------------- Profile: friend picker
+let FRIENDS = [];
+const frIcon = (url, cls) => url ? `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'ph'}))">` : '<span class="ph"></span>';
+function frState(f){
+  if (f.playing === 'inGame') return ['ingame', 'In game' + (f.champ ? ' as ' + f.champ : '')];
+  if (f.playing === 'championSelect') return ['ingame', 'In champ select'];
+  if (f.playing === 'inQueue') return ['ingame', 'In queue'];
+  if (f.status === 'offline' || f.status === 'mobile') return ['', f.status === 'mobile' ? 'On mobile' : 'Offline'];
+  if (f.status === 'away' || f.status === 'dnd') return ['away', f.status === 'dnd' ? 'Busy' : 'Away'];
+  return ['on', 'Online'];
+}
+function drawFriendPicker(){
+  const qv = (q('#fpickQ').value || '').toLowerCase();
+  const list = FRIENDS.filter(f => !qv || f.name.toLowerCase().includes(qv));
+  const online = list.filter(f => frState(f)[0] !== ''), off = list.filter(f => frState(f)[0] === '');
+  const row = f => { const [c, t] = frState(f); return `<button class="fpick-row" role="option" data-n="${esc(f.name)}" data-p="${esc(f.puuid||'')}"><span class="av">${frIcon(f.icon_url)}<i class="${c}"></i></span><span style="min-width:0"><b>${esc(f.name.split('#')[0])}</b><small>${esc(t)}</small></span><span class="tg">#${esc(f.name.split('#')[1]||'')}</span></button>`; };
+  q('#fpickList').innerHTML = (online.length ? `<div class="fpick-sec">Online · ${online.length}</div>` + online.map(row).join('') : '')
+    + (off.length ? `<div class="fpick-sec">Offline · ${off.length}</div>` + off.map(row).join('') : '')
+    || `<div class="muted" style="padding:12px">${FRIENDS.length ? 'No friend matches that.' : 'Open League and your friends show up here.'}</div>`;
+  const on = FRIENDS.filter(f => frState(f)[0] !== '');
+  q('#fpickStack').innerHTML = on.slice(0, 3).map(f => f.icon_url ? `<img src="${esc(f.icon_url)}" alt="">` : '').join('');
+  q('#fpickLabel').textContent = FRIENDS.length ? `Friends · ${on.length} online` : 'Friends';
+}
+loadFriends = async function(){ try { FRIENDS = await api('/api/friends'); drawFriendPicker(); } catch(e){} };
+q('#fpickBtn').onclick = e => { e.stopPropagation(); const p = q('#fpickPop'); p.classList.toggle('on'); if (p.classList.contains('on')){ q('#fpickQ').value = ''; drawFriendPicker(); setTimeout(() => q('#fpickQ').focus(), 0); } };
+q('#fpickQ').oninput = drawFriendPicker;
+q('#fpickList').onclick = e => { const b = e.target.closest('.fpick-row'); if (!b) return; q('#fpickPop').classList.remove('on'); lookUp(b.dataset.n, b.dataset.p); };
+document.addEventListener('click', e => { if (!e.target.closest('#fpick')) q('#fpickPop').classList.remove('on'); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') q('#fpickPop').classList.remove('on'); });
+q('#codeBtn').onclick = () => { const r = q('#codeRow'); r.style.display = r.style.display === 'none' ? '' : 'none'; if (r.style.display === '') q('#codeQ').focus(); };
+
+// ---------------- Friends: who you play with
+function drawMates(r){
+  const M = r.mates || [];
+  const el = q('#frMates'); if (!el) return;
+  if (!M.length){ el.innerHTML = `<div class="muted">${r.status && /load|Open League/.test(r.status) ? 'Loading your games…' : 'Nobody yet: play a few games with friends and they show up here.'}</div>`; return; }
+  el.innerHTML = `<div class="mates-wrap"><div class="mates"><div class="mate h"><span></span><span>Player</span><span>Games together</span><span>Win rate</span><span>Your damage</span><span>Their damage</span><span>Your KDA</span></div>`
+    + M.map(m => `<div class="mate" data-n="${esc(m.name)}" data-p="${esc(m.puuid)}" onclick="openFriend(this.dataset.n, this.dataset.p, false)">${frIcon(m.icon_url)}<span style="font-weight:600;min-width:0">${esc(m.name.split('#')[0])}${m.friend ? '<span class="fb">FRIEND</span>' : ''}</span>
+        <span><b>${m.games}</b></span><span class="${m.wr>=50?'win':'loss'}"><b>${m.wr}%</b> <span class="muted" style="font-size:11.5px">${m.wins}-${m.games-m.wins}</span></span><span>${fmt(m.my_avg)}</span><span>${fmt(m.their_avg)}</span><span>${m.kda}</span></div>`).join('') + `</div></div>`;
+}
+FR_SORTS.splice(1, 0, ['together', 'Played with']);
+q('#frSort').innerHTML = FR_SORTS.map(([k,l])=>`<button data-k="${k}" class="${k===frSort?'on':''}">${l}</button>`).join('');
+const _sortVal11 = sortVal;
+sortVal = function(f){ return frSort === 'together' ? ((f.together || {}).games || 0) : _sortVal11(f); };
+const _loadBoard11 = loadBoard;
+loadBoard = async function(){
+  await _loadBoard11();
+  if (page !== 'friends') return;
+  try { const r = await api('/api/friends_board'); drawMates(r);
+    const top = (r.mates || [])[0];
+    if (top && q('#frHi') && !q('#frHi .mostwith')) q('#frHi').insertAdjacentHTML('afterbegin', `<div class="box mostwith">${frIcon(top.icon_url)}<div><div class="muted" style="font-size:12px">Most played with</div><b>${esc(top.name.split('#')[0])}</b><div class="muted" style="font-size:12px">${top.games} games · ${top.wr}% wins together</div></div></div>`);
+  } catch(e){}
+};
+'''
+
+
+def extend11(html):
+    html = html.replace('''/* champ select */''', CSS11 + '''/* champ select */''', 1)
+    old = html[html.index('''    <div class="box"><div class="search" style="margin:0;flex-wrap:wrap">
+      <input id="lookQ"'''):]
+    old = old[:old.index('''<div class="fr" id="friends"></div></div>''') + len('''<div class="fr" id="friends"></div></div>''')]
+    html = html.replace(old, PROFILE11, 1)
+    a = '''    <div class="hl" id="frHi"></div>'''
+    assert html.count(a) == 1
+    html = html.replace(a, FRIENDS11, 1)
+    a = '''<div class="p ${pr.cls==='ingame'?'ig':''}">${esc(pr.txt)}</div>'''
+    assert html.count(a) == 1
+    html = html.replace(a, '''<div class="p ${pr.cls==='ingame'?'ig':''}">${esc(pr.txt)}${f.together && !f.me ? ` · <span style="color:var(--teal)">${f.together.games} games together (${f.together.wr}%)</span>` : ''}</div>''', 1)
+    assert html.count('let lastTick = 0;') == 1
+    html = html.replace('''let lastTick = 0;''', JS11 + '''let lastTick = 0;''', 1)
     return html

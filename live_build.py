@@ -88,7 +88,7 @@ def analyze(svc):
     data = svc.data
     if not live or not data:
         return None
-    champ = live["champion"]
+    champ = live.get("champion")
     ch = data["champions"].get(champ)
     if not ch:
         return None

@@ -12,6 +12,19 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.5.0",
+        "date": "2026-11-10",
+        "summary": "Smarter builds and starts, a Hall of Fame for every week, month and year, a cleaner Profile, and who you play with most.",
+        "changes": [
+            ("Item sets", "Only LoLStat's three sets show in the shop now. They were being saved twice (to your account and as a backup file), so every set appeared two times. Old copies are cleaned up automatically, and your own sets stay."),
+            ("Build order", "Every build is now ordered by the most damage per gold at each step, worked out against the enemy team's armor and magic resist. Items that multiply other stats (like Rabadon's Deathcap or Infinity Edge) come once you have the stats they multiply, and champions that need mana get a mana item in their first two."),
+            ("Starting items", "In ARAM and ARAM Mayhem, LoLStat scores every way to spend your 1,400 starting gold and picks the one with the most damage that builds into the item you rush, with mana for champions who need it (like Lost Chapter for mages) and fewer, bigger parts. First back now counts the parts you already have."),
+            ("Hall of Fame", "Party Showdown's Hall of Fame has This week, This month, This year and All time, with titles, games won, played, win %, total damage, average per game, best game and biggest win. Click any column to sort."),
+            ("Profile", "The row of friends at the top is gone: pick a friend from a clean dropdown with their League icons, online status and search."),
+            ("Who you play with most", "New on the Friends tab: everyone who was on your team two or more times in your recent games, with games together, win rate together, your damage and theirs, and your KDA. Sort the leaderboard by Played with."),
+        ],
+    },
+    {
         "version": "4.4.3",
         "date": "2026-11-10",
         "summary": "Spells change the moment you pick them, and LoLStat resets when you leave a game.",

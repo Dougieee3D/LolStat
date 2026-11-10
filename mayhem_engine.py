@@ -624,6 +624,84 @@ BUILD_STYLES_CLASSIC = [
 ]
 
 
+def needs_mana(ch):
+    """Champions that run out of mana without it: mages, controllers, spell-spamming fighters."""
+    if ch.get("partype") != "Mana":
+        return False
+    cls, ps = set(ch["classes"]), set(ch.get("playstyles") or [])
+    return bool(cls & {"Mage", "Controller"} or ps & {"Poke", "Spell-spam"} or "Battlemage" in (ch.get("subclasses") or []))
+
+
+def damage_model(stats, feats, ch, dmg, prof):
+    """Damage output from a set of items against this enemy team (a relative number, used to compare
+    builds and orders). Covers AD/AP, attack speed, crit, % multipliers, penetration vs their resists,
+    ability haste, on-hit and burn."""
+    auto = "Marksman" in ch["classes"] or "Auto-attack" in (ch.get("playstyles") or [])
+    tanks = len(prof.get("tanks") or [])
+    g = lambda k: float(stats.get(k, 0))
+    n = lambda f: sum(1 for x in feats if x == f)
+    out = 0.0
+    if dmg in ("ad", "hybrid"):
+        ad = 95 + g("ad")
+        armor = 55 + 30 * tanks + 8 * prof.get("armor", 0)
+        eff = max(0.0, armor * (1 - min(g("arpen"), 60) / 100) - g("leth"))
+        mit = 100 / (100 + eff)
+        if auto:
+            crit = min(1.0, g("crit") / 100)
+            hit = ad * (1 + crit * (0.75 + g("critdmg") / 100)) + 20 * n("onhit")
+            v = hit * (0.7 + 0.7 * min(g("as"), 200) / 100)
+        else:
+            v = ad * (1 + min(g("haste"), 150) / 160) * (1 + 0.15 * n("spellblade"))
+        out += v * mit * (1 + 0.08 * n("maxhp") + 0.06 * n("curhp"))
+    if dmg in ("ap", "hybrid"):
+        ap = 30 + g("ap")
+        if n("ap_amp"):
+            ap *= 1.3
+        mr = 45 + 20 * tanks + 8 * prof.get("mr", 0)
+        eff = max(0.0, mr * (1 - min(g("mpen_pct"), 60) / 100) - g("mpen"))
+        mit = 100 / (100 + eff)
+        v = (120 + 0.9 * ap) * (1 + min(g("haste"), 150) / 140)
+        if auto:
+            v *= 0.75 + 0.35 * min(g("as"), 200) / 100
+        v *= 1 + 0.10 * n("burn") + 0.08 * n("maxhp") + 0.12 * n("spellblade") + 0.06 * n("onhit")
+        out += v * mit * (0.6 if dmg == "hybrid" else 1.0)
+    return out
+
+
+def order_for_damage(picks, legend, ch, dmg, prof, healers=False):
+    """Buy order: at every step, the item that adds the most damage per gold on top of what you
+    already have. Items that multiply other stats (bonus % AP, crit damage, % penetration) land where
+    they're worth the most. Mana users get a mana item in their first two."""
+    rest = list(picks)
+    have_st, have_f, order = {}, [], []
+    while rest:
+        base = damage_model(have_st, have_f, ch, dmg, prof)
+
+        def gain(p):
+            it = legend[p[0]]
+            st = dict(have_st)
+            for k, v in it["stats"].items():
+                st[k] = st.get(k, 0) + v
+            return (damage_model(st, have_f + list(it["feats"]), ch, dmg, prof) - base) / max(1, it.get("gold") or 3000)
+        nxt = max(rest, key=gain)
+        rest.remove(nxt)
+        order.append(nxt)
+        for k, v in legend[nxt[0]]["stats"].items():
+            have_st[k] = have_st.get(k, 0) + v
+        have_f += list(legend[nxt[0]]["feats"])
+    if needs_mana(ch) and not any(legend[p[0]]["stats"].get("mana") for p in order[:2]):
+        m = next((p for p in order[2:] if legend[p[0]]["stats"].get("mana")), None)
+        if m:
+            order.remove(m)
+            order.insert(1, m)
+    if healers:                                  # anti-heal by your third item against heavy healing
+        h = next((p for p in order[3:] if "antiheal" in legend[p[0]]["feats"]), None)
+        if h:
+            order.remove(h)
+            order.insert(2, h)
+    return order
+
+
 def make_builds(champion, augment_ids, enemies, data, enemy_items=None, owned=None, champ_items=None, mode="mayhem",
                 item_filter=None, no_boots=False):
     ch = data["champions"].get(champion)
@@ -688,6 +766,8 @@ def make_builds(champion, augment_ids, enemies, data, enemy_items=None, owned=No
                 _add(w, k, v * m)
         if prof["heal"] >= 1.5:
             w["antiheal"] = max(w.get("antiheal", 0), 0.9)
+        if needs_mana(ch):
+            w["mana"] = max(w.get("mana", 0), 0.6)    # mana users: a mana item keeps the damage coming
 
         def score(iid, it):
             s, parts = item_score(it, w, ch, flags, primary_stats(ch, dmg, flags, w))
@@ -742,12 +822,8 @@ def make_builds(champion, augment_ids, enemies, data, enemy_items=None, owned=No
                 picks = [p for p in picks if p is not best_swap[1]] + [best_swap[2]]
         bpick = max(((i, *score(i, it)) for i, it in boots.items()), key=lambda c: c[1], default=None)
 
-        # order: core first, % pen and anti-heal in the middle
-        def order_key(p):
-            it = legend[p[0]]
-            pen = it["stats"].get("arpen") or it["stats"].get("mpen_pct")
-            return (-p[1] + (900 if pen else 0) - (600 if "antiheal" in it["feats"] else 0))
-        picks.sort(key=order_key)
+        # order: the most damage per gold at every step
+        picks = order_for_damage(picks, legend, ch, dmg, prof, healers=prof["heal"] >= 1.5)
 
         out = []
         for iid, s, parts in picks:

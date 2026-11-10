@@ -76,7 +76,7 @@ def build_dmg(build, data, ch):
     return ch["dmg"]
 
 
-def _start(ch, data, mode, role, first, dmg, has_boots):
+def _start(ch, data, mode, role, first, dmg, has_boots, build_items=None):
     if mode == "sr":
         role = role or guess_role(ch)
         cls = set(ch["classes"])
@@ -93,29 +93,120 @@ def _start(ch, data, mode, role, first, dmg, has_boots):
         if "Tank" in cls or ("Fighter" in cls and ch["ratings"].get("toughness", 2) >= 3 and dmg != "ad"):
             return [DORAN_SHIELD, POTION], "Safe lane start for tanks and bruisers."
         return [DORAN_BLADE, POTION], "Damage lane start."
+    return _best_start(ch, data, mode, build_items or [first], has_boots, dmg)
+
+
+# stats of the item parts you can start with (finished items carry their own stats in the game data)
+PART_STATS = {
+    "1036": {"ad": 10}, "1037": {"ad": 25}, "1038": {"ad": 40}, "1042": {"as": 10}, "1043": {"as": 15},
+    "1018": {"crit": 15}, "1052": {"ap": 20}, "1026": {"ap": 45}, "1058": {"ap": 65}, "1027": {"mana": 300},
+    "1028": {"hp": 150}, "1029": {"armor": 15}, "1031": {"armor": 40}, "1033": {"mr": 25}, "1057": {"mr": 45},
+    "1011": {"hp": 350}, "1053": {"ad": 15, "ls": 7}, "2022": {"haste": 5}, "1001": {"ms": 25},
+    "3070": {"mana": 240, "haste": 2}, "3802": {"ap": 40, "mana": 300, "haste": 10}, "3133": {"ad": 20, "haste": 10},
+    "3134": {"ad": 20, "leth": 10}, "3057": {"haste": 5, "spellblade": 1}, "3145": {"ap": 45}, "3108": {"ap": 35, "haste": 10},
+    "3113": {"ap": 30, "ms_pct": 4}, "3916": {"ap": 25, "antiheal": 1}, "3123": {"ad": 20, "antiheal": 1},
+    "1082": {"ap": 15, "hp": 50}, "3086": {"as": 15, "crit": 15, "ms_pct": 2}, "6670": {"ad": 15, "as": 15, "crit": 20},
+    "3044": {"ad": 15, "hp": 200}, "3067": {"hp": 200, "haste": 10}, "3077": {"ad": 20}, "3051": {"ad": 15, "as": 20},
+    "3803": {"hp": 300, "mana": 300}, "3155": {"ad": 25, "mr": 35}, "3147": {"ap": 30, "hp": 150},
+    "4630": {"ap": 25, "mpen_pct": 13}, "6660": {"hp": 200, "burn": 1}, "3801": {"hp": 200}, "3076": {"armor": 30},
+    "3082": {"armor": 40}, "3211": {"hp": 250, "mr": 25}, "3140": {"mr": 30}, "4642": {"ap": 20, "haste": 10},
+    "3024": {"armor": 20, "mana": 250, "haste": 10}, "3035": {"ad": 20, "arpen": 18}, "1083": {"ad": 7},
+    "3041": {"ap": 20, "hp": 100}, "2019": {"armor": 30, "hp": 200}, "3112": {"ap": 40, "hp": 150},
+}
+
+
+def _needs_mana(ch):
+    return eng.needs_mana(ch)
+
+
+def _part_value(data, iid, w):
+    """Gold-equivalent value of a part for this champion: damage stats count fully, the rest less."""
+    st = PART_STATS.get(iid)
+    if st is None:
+        it = data["items"].get(iid) or {}
+        st = dict(it.get("stats") or {}, **{f: 1 for f in it.get("feats") or []})
+    v = 0.0
+    for k, amt in st.items():
+        if k in eng.FEATURE_GOLD:
+            v += eng.FEATURE_GOLD[k] * 0.5 * max(w.get(k, 0), 0.2)
+        else:
+            v += amt * eng.STAT_GOLD.get(k, 0) * (w.get(k, 0) if k in w else 0.15)
+    return v
+
+
+def _best_start(ch, data, mode, build_items, has_boots, dmg):
+    """Every way to spend your starting gold on parts of your build, scored: damage for your champion,
+    progress on the item you rush, and mana if your champion needs it. The highest score wins."""
     budget = START_GOLD.get(mode, 1400)
-    picks, left = [], budget
-    for p in sorted(_buyable_parts(data, first, budget), key=lambda p: -_gold(data, p)):
-        if _gold(data, p) <= left:
-            picks.append(p)
-            left -= _gold(data, p)
-    if has_boots and left >= _gold(data, BOOTS1) and BOOTS1 not in picks:
-        picks.append(BOOTS1)
-        left -= _gold(data, BOOTS1)
-    while left >= 50 and picks.count(POTION) < 2:
-        picks.append(POTION)
+    w = eng.champion_weights(dict(ch, dmg=dmg))
+    nodes = []                                   # (part id, gold, tree, ancestors)
+
+    def walk(iid, tree, anc):
+        for p in _parts(data, iid):
+            g = _gold(data, p)
+            if g and g <= budget:
+                nodes.append((p, g, tree, anc))
+            walk(p, tree, anc + (p,))
+    for t, it in enumerate(build_items[:2]):
+        walk(str(it), t, ())
+    if has_boots:
+        nodes.append((BOOTS1, _gold(data, BOOTS1), 2, ()))
+    nodes = nodes[:40]
+    tree_w = {0: 1.0, 1: 0.7, 2: 0.55}            # the rush item first, then the second item, then boots
+    needs_mana = _needs_mana(ch) and any(PART_STATS.get(n[0], {}).get("mana") for n in nodes)
+    best, best_sc = [], -1
+    n = len(nodes)
+
+    def rec(i, picks, gold):
+        nonlocal best, best_sc
+        if i == n or len(picks) == 4:
+            if not picks:
+                return
+            sc = sum(_part_value(data, nodes[j][0], w) * tree_w[nodes[j][2]] + nodes[j][1] * 0.35 * tree_w[nodes[j][2]]
+                     + (0.15 * nodes[j][1] if _parts(data, nodes[j][0]) else 0)      # already combined: its bonus comes now
+                     for j in picks)
+            sc -= 80 * max(0, len(picks) - 2)     # fewer, bigger parts: inventory slots matter
+            if needs_mana and not any(PART_STATS.get(nodes[j][0], {}).get("mana") for j in picks):
+                sc *= 0.7                         # you'd run dry: a start with mana scores higher
+            sc += min(2, (budget - gold) // 50) * 25  # leftover gold buys potions
+            if sc > best_sc:
+                best, best_sc = [nodes[j][0] for j in picks], sc
+            return
+        p, g, tree, anc = nodes[i]
+        clash = any(nodes[j][2] == tree and (nodes[j][0] in anc or p in nodes[j][3]) for j in picks)
+        if gold + g <= budget and not clash:
+            rec(i + 1, picks + [i], gold + g)
+        rec(i + 1, picks, gold)
+    rec(0, [], 0)
+    left = budget - sum(_gold(data, p) for p in best)
+    best = sorted(best, key=lambda p: -_gold(data, p))
+    while left >= 50 and best.count(POTION) < 2:
+        best.append(POTION)
         left -= 50
-    return picks, f"Spend your starting gold on parts of your first item."
+    has_mana = any(PART_STATS.get(p, {}).get("mana") for p in best)
+    note = "The best start for your champion: the most damage from your starting gold, building into the item you rush"
+    note += ", with mana so you can keep casting." if needs_mana and has_mana else "."
+    return best, note
+
+
+def _remaining_parts(data, iid, have, budget):
+    """What's left to buy for an item, counting parts you already have (also inside bigger parts)."""
+    def contains(node, part):
+        return any(p == part or contains(p, part) for p in _parts(data, node))
+    out = []
+    for p in _parts(data, iid):
+        if p in have:
+            have.remove(p)
+        elif any(contains(p, h) for h in have) or _gold(data, p) > budget and _parts(data, p):
+            out += _remaining_parts(data, p, have, budget)
+        else:
+            out.append(p)
+    return out
 
 
 def _first_back(data, mode, start, first, has_boots):
     have = list(start)
-    rest = []
-    for p in _buyable_parts(data, first, 1300 if mode == "sr" else 1400):
-        if p in have:
-            have.remove(p)
-        else:
-            rest.append(p)
+    rest = _remaining_parts(data, first, have, 1300 if mode == "sr" else 1400)
     rest.sort(key=lambda p: -_gold(data, p))
     if has_boots and BOOTS1 not in start:
         rest.insert(1 if rest else 0, BOOTS1)
@@ -199,7 +290,7 @@ def guide(build, champion, data, mode="sr", role="", enemies=()):
     dmg = build_dmg(build, data, ch)
     first = items[0]["id"]
     has_boots = bool(build.get("boots"))
-    start, start_note = _start(ch, data, mode, role, first, dmg, has_boots)
+    start, start_note = _start(ch, data, mode, role, first, dmg, has_boots, [i["id"] for i in items])
     back, back_note = _first_back(data, mode, start, first, has_boots)
     info = lambda ids: [x for x in (_info(data, i) for i in ids) if x]
     core = [dict(i, rush=(n == 0)) for n, i in enumerate(items[:3])]
