@@ -1307,7 +1307,7 @@ function drawUpdate(u){
 
 // ---------------- Live build page (also in the in-game panel)
 function drawLiveBuild(st){
-  const el = q('#lbOut'); if (!el || page !== 'livebuild') return;
+  const el = q('#lbOut'); if (!el || !onPlay()) return;
   const lb = st.live_build || (st.mayhem && st.mayhem.live_build);
   const on = st.settings.live_build_on !== false;
   let h = `<div class="box"><div class="cl-head"><div><h2 style="margin:0">Live build</h2><div class="muted" style="font-size:12.5px">Your whole build, adjusting as everyone's items change. Also at the bottom of the in-game panel. Your item sets don't change.</div></div>
@@ -1362,6 +1362,8 @@ let lastTick = 0;''', 1)
 CSS10 = r'''
 .subtabs{display:none;gap:4px;margin:-6px 0 18px;padding:4px;border-radius:14px;background:var(--panel);border:1px solid var(--line);width:max-content;max-width:100%;overflow-x:auto}
 .subtabs.on{display:flex}
+.page.merged + .page.merged{margin-top:34px;padding-top:26px;border-top:1px solid var(--line)}
+.page.merged[data-head]::before{content:attr(data-head);display:block;font-size:20px;font-weight:700;margin:0 0 14px;color:var(--text)}
 .subtabs button{padding:8px 16px;border-radius:10px;font-weight:600;font-size:13.5px;color:var(--muted);white-space:nowrap}
 .subtabs button:hover{color:var(--text);background:var(--raised)}
 .subtabs button.on{color:#0c1220;background:var(--gold)}
@@ -1371,7 +1373,7 @@ JS10 = r'''
 // ---------------- sidebar groups: fewer icons, related pages side by side
 const HUBS = [
   {key:'home', label:'Home', pages:[['home','Home']]},
-  {key:'play', label:'Play', pages:[['mayhem','Champ select & builds'],['live','Live game'],['livebuild','Live build']]},
+  {key:'play', label:'Play', merge:true, pages:[['mayhem','Champ select & builds'],['live','Live game'],['livebuild','Live build']]},
   {key:'champs', label:'Champions', pages:[['champs','Champions']]},
   {key:'you', label:'You', pages:[['profile','Profile'],['stats','My stats'],['games','Games & damage'],['friends','Friends']]},
   {key:'fun', label:'Fun', pages:[['fun','Fun'],['showdown','Party Showdown']]},
@@ -1395,8 +1397,8 @@ function hubLast(h){ try { const p = localStorage.getItem('lolstat.hub.' + h.key
 })();
 function drawSubtabs(p){
   const h = hubOf(p), bar = q('#subtabs');
-  bar.classList.toggle('on', h.pages.length > 1);
-  bar.innerHTML = h.pages.length > 1 ? h.pages.map(([k, t]) => `<button role="tab" aria-selected="${k === p}" class="${k === p ? 'on' : ''}" onclick="go('${k}')">${t}</button>`).join('') : '';
+  bar.classList.toggle('on', h.pages.length > 1 && !h.merge);
+  bar.innerHTML = h.pages.length > 1 && !h.merge ? h.pages.map(([k, t]) => `<button role="tab" aria-selected="${k === p}" class="${k === p ? 'on' : ''}" onclick="go('${k}')">${t}</button>`).join('') : '';
 }
 const _go10 = go;
 go = function(p){
@@ -1406,7 +1408,15 @@ go = function(p){
   try { localStorage.setItem('lolstat.hub.' + h.key, p); } catch(e){}
   drawSubtabs(p);
   if (h.pages.length > 1) q('#title').textContent = h.label;
+  if (h.merge){
+    // Play is one page you scroll: champ select & builds, then the live game, then Live build
+    h.pages.forEach(([k]) => { const sec = q('#p-' + k); if (sec) sec.classList.add('on', 'merged'); });
+    if (p !== 'live') loadScout();
+    if (S) drawLiveBuild(S);
+    if (p !== h.pages[0][0]){ const sec = q('#p-' + p); if (sec) setTimeout(() => sec.scrollIntoView({block:'start'}), 0); }
+  }
 };
+const onPlay = () => hubOf(page).key === 'play';
 const _pt10 = pageTitle;
 pageTitle = function(p){ const h = hubOf(p); return h.pages.length > 1 ? h.label : _pt10(p); };
 drawSubtabs(typeof page !== 'undefined' ? page : 'home');

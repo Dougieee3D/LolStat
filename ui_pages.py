@@ -711,7 +711,7 @@ AUTO.splice(3, 0, ['runes','Rune pages','Imports a damage rune page (Summoner\'s
 let champIcons = {};
 async function ensureChampIcons(){ if (Object.keys(champIcons).length) return; try { (await api('/api/champions')).forEach(c=>champIcons[c.name]=c); } catch(e){} }
 async function loadScout(){
-  if (page !== 'live') return;
+  if (page !== 'live' && !(typeof onPlay === 'function' && onPlay())) return;
   await ensureChampIcons();
   try {
     const r = await api('/api/scout');

@@ -1,5 +1,11 @@
 # LoLStat patch notes
 
+## LoLStat 4.4.1 (2026-11-10)
+
+Play is one page you scroll.
+
+- **Play:** No more tabs: Champ select & builds, Live game and Live build are on one page. Scroll down for the live game and your Live build.
+
 ## LoLStat 4.4.0 (2026-11-10)
 
 A cleaner sidebar, and Flash stays on your key.

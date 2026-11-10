@@ -12,6 +12,14 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.4.1",
+        "date": "2026-11-10",
+        "summary": "Play is one page you scroll.",
+        "changes": [
+            ("Play", "No more tabs: Champ select & builds, Live game and Live build are on one page. Scroll down for the live game and your Live build."),
+        ],
+    },
+    {
         "version": "4.4.0",
         "date": "2026-11-10",
         "summary": "A cleaner sidebar, and Flash stays on your key.",
