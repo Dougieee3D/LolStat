@@ -272,7 +272,7 @@ class MayhemService:
                 "magic": g("MAGIC_DAMAGE_DEALT_TO_CHAMPIONS"), "true": g("TRUE_DAMAGE_DEALT_TO_CHAMPIONS"),
                 "taken": g("TOTAL_DAMAGE_TAKEN"), "healed": g("TOTAL_HEAL"), "gold": g("GOLD_EARNED"),
                 "k": g("CHAMPIONS_KILLED"), "d": g("NUM_DEATHS"), "a": g("ASSISTS"),
-                "augments": [self.aug_names.get(a, a) for a in self.chosen],
+                "augments": [self.aug_names.get(a, a) for a in (self.chosen or getattr(self, "last_game_augments", []))],
             }
             rec["dpm"] = round(rec["damage"] / mins)
             rec["share"] = round(rec["damage"] / team_dmg * 100) if team_dmg else 0
@@ -291,9 +291,13 @@ class MayhemService:
             self.live = live
             if not live:
                 if self.game_key is not None:
-                    self.game_key = None
+                    gone = getattr(self, "_gone_at", None) or time.time()
+                    self._gone_at = gone
                     self.offer = None
+                    if time.time() - gone >= 4:          # really over (not a hiccup): back to normal
+                        self._end_game_view()
                 return
+            self._gone_at = None
             gm = str(live.get("mode", "")).upper()
             mode = "mayhem" if gm == "KIWI" or "MAYHEM" in gm else "aram" if gm == "ARAM" else "sr" if gm == "CLASSIC" else self.mode
             if mode != self.mode:
@@ -315,6 +319,19 @@ class MayhemService:
             for aid in live["augments"]:
                 self._add(aid)
             self._ensure_ranks(live["champion"])
+
+    def _end_game_view(self):
+        """You left or finished the game: LoLStat goes back to its normal pages (the game is kept for its
+        post-game record, and comes back if you reconnect)."""
+        self.last_game_augments = list(self.chosen)
+        self.game_key = None
+        self._gone_at = None
+        self.chosen, self.offer, self.unconfirmed = [], None, None
+        self.manual_champ, self.manual_enemies = "", [""] * 5
+        self.locked = None
+        self._lb = None
+        self._builds_cache = (None, None)
+        self.log("Game closed: LoLStat is back to normal.")
 
     def _live_loop(self):
         while True:

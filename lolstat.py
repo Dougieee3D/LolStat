@@ -594,7 +594,7 @@ def full_state():
         "app": {"name": APP_NAME, "version": APP_VERSION, "notice": RIOT_NOTICE},
         "accept": a,
         "settings": dict(settings),
-        "mayhem": mayhem.state() if mayhem else {},
+        "mayhem": dict(mayhem.state(), spells_now=_spells.get("now")) if mayhem else {},
         "log": [l for l in LOG_LINES if "Phone remote:" not in l][-8:],
         "goal": goal_progress(), "dnd_active": is_dnd(), "showdown": showdown.summary(),
             "clips": clips.view() if clips else None,
@@ -623,6 +623,9 @@ def do_action(body):
             save_settings()
             if name == "phone_remote":
                 set_phone_remote(settings[name])
+            elif name == "spells":
+                _spells["sig"] = None
+                _wake.set()
             else:
                 log(f"{name} turned {'on' if settings[name] else 'off'}.")
     elif act == "refresh_data":
@@ -786,6 +789,7 @@ def do_action(body):
             save_settings()
             if name in ("spell_d", "spell_f", "flash_key"):
                 _spells["sig"] = None
+                _wake.set()                 # in champ select: change them right now
     elif act == "test_overlay":
         mayhem.test_until = time.time() + 15
         mayhem.notify("Test overlay: look at your screen for the LoLStat button, panel and three sample letters (15 seconds).")
@@ -1514,6 +1518,7 @@ def sync_spells(phase):
     if not mayhem or not settings.get("spells", True) or phase != "ChampSelect":
         if phase != "ChampSelect":
             _spells["sig"] = None
+            _spells["now"] = None
         return
     cs = mayhem.champ_select or {}
     champ = mayhem.current_champion()
@@ -1544,6 +1549,7 @@ def sync_spells(phase):
         lcu_call("PATCH", "/lol-champ-select/v1/session/my-selection",
                  {"spell1Id": SPELLS[d], "spell2Id": SPELLS[f]})
         _spells["sig"] = sig
+        _spells["now"] = f"{d} + {f}"
         mayhem.notify(f"Summoner spells set: {d} + {f}")
     except Exception as e:
         _spells["sig"] = sig

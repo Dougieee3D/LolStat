@@ -639,7 +639,8 @@ function spellHtml(st){
   const sel = (n,v) => `<select aria-label="${n}" onchange="act('set_value',{name:'${n}',value:this.value})">${SPELLS.map(x=>`<option ${x===v?'selected':''}>${x}</option>`).join('')}</select>`;
   const fk = st.settings.flash_key || 'keep';
   const flash = `<select aria-label="Flash on" onchange="act('set_value',{name:'flash_key',value:this.value})">${[['keep','where it already is'],['D','D'],['F','F']].map(([v,t])=>`<option value="${v}" ${v===fk?'selected':''}>${t}</option>`).join('')}</select>`;
-  return `<span class="muted" style="font-size:12.5px">Spells: D</span>${sel('spell_d', st.settings.spell_d||'Smart')}<span class="muted" style="font-size:12.5px">F</span>${sel('spell_f', st.settings.spell_f||'Smart')}<span class="muted" style="font-size:12.5px;margin-left:8px">Flash on</span>${flash}<span class="muted" style="font-size:12px">Smart picks the second spell for your champion and puts Flash on your key.</span>`;
+  const now = st.mayhem && st.mayhem.spells_now ? `<span class="tag good" style="margin-right:6px">Set: ${esc(st.mayhem.spells_now)}</span>` : '';
+  return now + `<span class="muted" style="font-size:12.5px">Spells: D</span>${sel('spell_d', st.settings.spell_d||'Smart')}<span class="muted" style="font-size:12.5px">F</span>${sel('spell_f', st.settings.spell_f||'Smart')}<span class="muted" style="font-size:12.5px;margin-left:8px">Flash on</span>${flash}<span class="muted" style="font-size:12px">Smart picks the second spell for your champion and puts Flash on your key.</span>`;
 }
 function drawAuto(st){
   const sig = JSON.stringify([st.accept.enabled, st.settings]);
@@ -1088,9 +1089,21 @@ function drawChampSelect(cs){
     h += `</div></div>`;
   }
   if ((cs.pick_action || cs.ban_action) && !champsLoaded){ champsLoaded = true; api('/api/champions').then(r=>{ q('#champNames').innerHTML = r.map(c=>`<option value="${esc(c.name)}">`).join(''); }); }
-  if (S){ h += `<div class="auto" style="margin-top:16px">${autoHtml(S).replace(/<label class="chk">(?=[^]*?Auto-accept)/,'<label class="chk" style="display:none">')}</div><div class="spells">${spellHtml(S)}</div>`; }
+  if (S){ h += `<div class="auto" style="margin-top:16px">${autoHtml(S).replace(/<label class="chk">(?=[^]*?Auto-accept)/,'<label class="chk" style="display:none">')}</div>`; }
   h += `<div class="muted" style="font-size:12px;margin-top:12px">${S && S.mayhem.mode === 'mayhem' ? `Grades come from daily ARAM Mayhem stats${S.mayhem.champ_date ? ' (' + esc(S.mayhem.champ_date) + ')' : ''}. ` : ''}Builds, runes and spells below update the moment your champion changes.</div>`;
   if (el.dataset.h !== h){ el.dataset.h = h; el.innerHTML = h; }
+  csSpells(el);
+}
+// the spell menus live in their own box: champ select updates never rebuild them while you're choosing
+function csSpells(host){
+  if (!S) return;
+  let box = q('#csSpells');
+  if (!box){ box = document.createElement('div'); box.id = 'csSpells'; box.className = 'spells'; }
+  const autoBox = host.querySelector('.auto');
+  if (box.parentNode !== host || (autoBox && box.previousElementSibling !== autoBox)) (autoBox ? autoBox.after(box) : host.appendChild(box));
+  if (box.contains(document.activeElement)) return;
+  const sig = JSON.stringify([S.settings.spell_d, S.settings.spell_f, S.settings.flash_key, S.mayhem.spells_now]);
+  if (box.dataset.sig !== sig){ box.dataset.sig = sig; box.innerHTML = spellHtml(S); }
 }
 
 function card(c, best, choose){

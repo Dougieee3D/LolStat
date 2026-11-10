@@ -1,5 +1,12 @@
 # LoLStat patch notes
 
+## LoLStat 4.4.3 (2026-11-10)
+
+Spells change the moment you pick them, and LoLStat resets when you leave a game.
+
+- **Summoner spells:** Changing your spells in LoLStat during champ select now sets them in the client right away, even while champ select is busy. The menu shows what's set (like "Set: Flash + Mark").
+- **Leaving a game:** When you leave or quit a game, LoLStat goes back to its normal pages instead of staying on that game. Your augments are still saved with the game, and if you reconnect everything comes back.
+
 ## LoLStat 4.4.2 (2026-11-10)
 
 Privacy: LoLStat only talks to your own PC unless you turn on the phone remote.
