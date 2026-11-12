@@ -1524,17 +1524,36 @@ def _flash_side_now():
     return None
 
 
+def _learn_flash_side():
+    """You swapped Flash to the other key in champ select after LoLStat set your spells: remember that
+    side from now on (Settings > Automation > Flash on), so it's never backwards again."""
+    sent = _spells.get("sent")
+    if not sent or "Flash" not in sent or time.time() - _spells.get("sent_t", 0) < 2:
+        return
+    side = _flash_side_now()
+    want = "D" if sent[0] == "Flash" else "F"
+    if side and side != want:
+        settings["flash_key"] = side
+        save_settings()
+        _spells["sent"] = None
+        log(f"Flash on {side} saved: LoLStat will keep Flash on {side} from now on.")
+        if mayhem:
+            mayhem.notify(f"Got it: Flash stays on {side} from now on.")
+
+
 def sync_spells(phase):
     """Set your summoner spells in champ select (Smart picks damage spells for your champion)."""
     if not mayhem or not settings.get("spells", True) or phase != "ChampSelect":
         if phase != "ChampSelect":
             _spells["sig"] = None
             _spells["now"] = None
+            _spells["sent"] = None
         return
     cs = mayhem.champ_select or {}
     champ = mayhem.current_champion()
     if not champ:
         return
+    _learn_flash_side()
     aram = mayhem.mode in ("aram", "mayhem")
     d, f = settings.get("spell_d", "Smart"), settings.get("spell_f", "Smart")
     sd, sf = smart_spells(champ, aram, cs.get("role", ""))     # (other spell, "Flash")
@@ -1561,6 +1580,7 @@ def sync_spells(phase):
                  {"spell1Id": SPELLS[d], "spell2Id": SPELLS[f]})
         _spells["sig"] = sig
         _spells["now"] = f"{d} + {f}"
+        _spells["sent"], _spells["sent_t"] = (d, f), time.time()
         mayhem.notify(f"Summoner spells set: {d} + {f}")
     except Exception as e:
         _spells["sig"] = sig

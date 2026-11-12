@@ -12,6 +12,14 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.5.2",
+        "date": "2026-11-12",
+        "summary": "Flash stays on the key you use.",
+        "changes": [
+            ("Summoner spells", "If you swap Flash to the other key in champ select, LoLStat remembers it and keeps Flash there from then on, so your spells are never backwards. You can also set it in Settings > Automation > Flash on."),
+        ],
+    },
+    {
         "version": "4.5.1",
         "date": "2026-11-12",
         "summary": "Fun's sections are tabs at the top, and Live build has its own tab in the in-game panel again.",

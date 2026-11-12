@@ -1,5 +1,11 @@
 # LoLStat patch notes
 
+## LoLStat 4.5.2 (2026-11-12)
+
+Flash stays on the key you use.
+
+- **Summoner spells:** If you swap Flash to the other key in champ select, LoLStat remembers it and keeps Flash there from then on, so your spells are never backwards. You can also set it in Settings > Automation > Flash on.
+
 ## LoLStat 4.5.1 (2026-11-12)
 
 Fun's sections are tabs at the top, and Live build has its own tab in the in-game panel again.
