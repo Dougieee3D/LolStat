@@ -1,5 +1,11 @@
 # LoLStat patch notes
 
+## LoLStat 4.5.3 (2026-11-12)
+
+Summoner spells in Settings.
+
+- **Settings:** New Summoner spells section in Settings > Automation: turn automatic spells on or off, pick your D and F spells (or Smart), and choose which key Flash goes on. Search "spells" with Ctrl+K to jump there.
+
 ## LoLStat 4.5.2 (2026-11-12)
 
 Flash stays on the key you use.

@@ -1173,6 +1173,10 @@ SETTINGS9 = r'''
       <h2>Updates</h2>
       <div class="set"><div><b>LoLStat <span id="updCur"></span></b><p id="updState">Checking…</p></div><div style="display:flex;gap:8px"><button class="btn" id="updBtn" onclick="act('update_check')">Check now</button></div></div>
       <div class="auto" id="setUpdate"></div>
+      <h2>Summoner spells</h2>
+      <div class="auto" id="setSpellsOn"></div>
+      <div class="set"><div><b>Your spells</b><p>D and F: pick a spell, or Smart to let LoLStat pick the best second spell for your champion. Flash on: the key you keep Flash on.</p></div></div>
+      <div class="spells" id="setSpells" style="margin:-4px 0 10px"></div>
       <h2>Item sets from other apps</h2>
       <div class="auto" id="setClean"></div>
       <div class="set"><div><b>Clean up item sets from other apps</b><p>Removes the item sets other build apps left in your client, so only LoLStat's and your own show in the shop. Sets you made yourself are never touched.</p></div><button class="btn" onclick="act('itemsets_clean')">Clean up now</button></div>
@@ -1243,7 +1247,7 @@ const SET_PAGES = [
   ['safety','Backup & safety','Backups, safe mode and cleanup','⛨'],
   ['about','Help & about','Troubleshooting and version','?']];
 const SET_RULES = [[/^Auto-accept/,'automation'],[/^In-game overlay$|^In-game panel|^Read augment cards|^Hotkey|^Panel content|^Live build/,'overlay'],
-  [/^Item sets in the League|^Item sets from other apps|^Clean up item sets|^Champ select helpers|^Favorite champions/,'automation'],[/^Game data|^Window and performance|^Updates/,'general'],
+  [/^Item sets in the League|^Item sets from other apps|^Summoner spells|^Your spells|^Set summoner spells|^Clean up item sets|^Champ select helpers|^Favorite champions/,'automation'],[/^Game data|^Window and performance|^Updates/,'general'],
   [/^Appearance|^Champion themes|^Custom theme|^Accessibility/,'look'],[/^Notifications|^Wellbeing/,'notify'],[/^Party Showdown/,'showdown'],
   [/^Backup and restore|^Safety/,'safety'],[/^Clips/,'clips']];
 let setPage = (()=>{ try { return localStorage.getItem('lolstat.setpage') || 'general'; } catch(e){ return 'general'; } })();
@@ -1305,6 +1309,9 @@ function drawNewSettings(st){
   if (q('#setPanel')) q('#setPanel').innerHTML = toggleRow(st, [['ov_show_steps','Start and first back','Your starting items and first back'],['ov_show_buynow','Buy now picks','Situational items the enemy team calls for'],
     ['ov_show_kda','KDA','Kills / deaths / assists'],['ov_show_cs','CS','Minions and monsters'],['ov_show_csmin','CS per minute',''],['ov_show_kp','Kill participation','Share of your team’s kills you took part in'],
     ['ov_show_gold','Gold','Your current gold'],['ov_show_level','Level',''],['ov_show_augments','Your augments','The augments you picked (ARAM Mayhem)']]);
+  if (q('#setSpellsOn')) q('#setSpellsOn').innerHTML = toggleRow(st, [['spells','Set my summoner spells in champ select','LoLStat sets them as soon as your champion is locked in. Turn off to always pick them yourself']]);
+  { const sp = q('#setSpells'); if (sp && !sp.contains(document.activeElement)){ const sig = JSON.stringify([st.settings.spell_d, st.settings.spell_f, st.settings.flash_key, (st.mayhem||{}).spells_now]);
+      if (sp.dataset.sig !== sig){ sp.dataset.sig = sig; sp.innerHTML = spellHtml(st); } } }
   if (q('#setClean')) q('#setClean').innerHTML = toggleRow(st, [['itemsets_clean_others','Remove other apps\u2019 item sets automatically','When LoLStat saves your item sets. Your own sets stay']]);
   if (q('#setLive')) q('#setLive').innerHTML = toggleRow(st, [['live_build_on','Live build','Show the Live build tab in the in-game panel']]);
   // update ready: ask once per version
@@ -1370,7 +1377,7 @@ def extend9(html):
                         '''drawSdHome(st); drawSdSettings(st); ovLookFill(st); drawClipSettings(st); drawNewSettings(st); drawLiveBuild(st);''', 1)
     html = html.replace('''if (p==='clips'){ drawClips(); loadClips(); } }''', '''if (p==='clips'){ drawClips(); loadClips(); } if (p==='livebuild' && S) drawLiveBuild(S); if (p==='settings'){ buildSettingsPages(); if (S){ window._setQolSig = null; drawSetQol(S); drawNewSettings(S); } } }''', 1)
     html = html.replace('''['clips','Clips'],''', '''['clips','Clips'],['livebuild','Live build'],''', 1)
-    html = html.replace('''['Clip settings','#clSettings'],''', '''['Clip settings','#clQuality'],['Updates','#updState'],['In-game panel content','#setPanel'],['Live build settings','#setLive'],''', 1)
+    html = html.replace('''['Clip settings','#clSettings'],''', '''['Clip settings','#clQuality'],['Updates','#updState'],['Summoner spells','#setSpells'],['Flash key','#setSpells'],['In-game panel content','#setPanel'],['Live build settings','#setLive'],''', 1)
     html = html.replace('''<button class="btn" onclick="go('settings');setTimeout(()=>q('#clSettings').scrollIntoView({behavior:'smooth'}),80)">Clip settings</button>''',
                         '''<button class="btn" onclick="go('settings');showSetPage('clips')">Clip settings</button>''', 1)
     html = html.replace('''q('#panelPage')''', '''q('#panelPage')''')

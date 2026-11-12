@@ -12,6 +12,14 @@ import sys
 # newest first. "changes" are (heading, what changed) pairs, written for players.
 NOTES = [
     {
+        "version": "4.5.3",
+        "date": "2026-11-12",
+        "summary": "Summoner spells in Settings.",
+        "changes": [
+            ("Settings", "New Summoner spells section in Settings > Automation: turn automatic spells on or off, pick your D and F spells (or Smart), and choose which key Flash goes on. Search \"spells\" with Ctrl+K to jump there."),
+        ],
+    },
+    {
         "version": "4.5.2",
         "date": "2026-11-12",
         "summary": "Flash stays on the key you use.",
