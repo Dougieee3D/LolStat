@@ -387,7 +387,7 @@ NAV3 = r'''  <button class="nav" data-page="fun" aria-label="Challenges"><svg vi
 SECTION3 = r'''
   <!-- CHALLENGES -->
   <section class="page" id="p-fun">
-    <div class="box"><div class="cs-head" style="margin:0"><div><h2 style="margin:0">Challenges</h2><div class="muted" style="font-size:12.5px">Missions, this week's Chaos build, your augment collection and the build lab.</div></div><div class="seg" id="funTabs"></div></div></div>
+    <div class="seg" id="funTabs" style="display:none"></div>
     <div id="funOut"></div>
     <datalist id="itemNames"></datalist>
   </section>
@@ -1180,7 +1180,7 @@ SETTINGS9 = r'''
       <div class="muted" style="font-size:12.5px;margin-bottom:6px">Choose what the in-game panel shows. Your builds are always there.</div>
       <div class="auto" id="setPanel"></div>
       <h2>Live build</h2>
-      <div class="muted" style="font-size:12.5px;margin-bottom:6px">At the bottom of the in-game panel (scroll down) and on the Live build page: your whole build, starting as the one you locked in and changing as the enemy team builds. Your item sets don't change.</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px">On its own tab in the in-game panel (click Live build at the top of the panel) and on the Play page: your whole build, starting as the one you locked in and changing as the enemy team builds. Your item sets don't change.</div>
       <div class="auto" id="setLive"></div>
     </div>'''
 
@@ -1306,7 +1306,7 @@ function drawNewSettings(st){
     ['ov_show_kda','KDA','Kills / deaths / assists'],['ov_show_cs','CS','Minions and monsters'],['ov_show_csmin','CS per minute',''],['ov_show_kp','Kill participation','Share of your team’s kills you took part in'],
     ['ov_show_gold','Gold','Your current gold'],['ov_show_level','Level',''],['ov_show_augments','Your augments','The augments you picked (ARAM Mayhem)']]);
   if (q('#setClean')) q('#setClean').innerHTML = toggleRow(st, [['itemsets_clean_others','Remove other apps\u2019 item sets automatically','When LoLStat saves your item sets. Your own sets stay']]);
-  if (q('#setLive')) q('#setLive').innerHTML = toggleRow(st, [['live_build_on','Live build','Show Live build at the bottom of the in-game panel']]);
+  if (q('#setLive')) q('#setLive').innerHTML = toggleRow(st, [['live_build_on','Live build','Show the Live build tab in the in-game panel']]);
   // update ready: ask once per version
   const pill = q('#updPill'); if (pill){ pill.style.display = (u.status === 'available' || u.status === 'later' || u.status === 'downloading' || u.status === 'installing') ? 'inline-flex' : 'none'; pill.textContent = u.status === 'downloading' ? `Updating ${u.pct || 0}%` : 'Update ready'; }
   const m = q('#updModal');
@@ -1331,7 +1331,7 @@ function drawLiveBuild(st){
   const el = q('#lbOut'); if (!el || !onPlay()) return;
   const lb = st.live_build || (st.mayhem && st.mayhem.live_build);
   const on = st.settings.live_build_on !== false;
-  let h = `<div class="box"><div class="cl-head"><div><h2 style="margin:0">Live build</h2><div class="muted" style="font-size:12.5px">Your whole build, adjusting as everyone's items change. Also at the bottom of the in-game panel. Your item sets don't change.</div></div>
+  let h = `<div class="box"><div class="cl-head"><div><h2 style="margin:0">Live build</h2><div class="muted" style="font-size:12.5px">Your whole build, adjusting as everyone's items change. Also on its own tab in the in-game panel. Your item sets don't change.</div></div>
     <button class="btn ${on ? '' : 'gold'}" onclick="act('setting',{name:'live_build_on'})">${on ? 'Turn off' : 'Turn on'}</button></div></div>`;
   if (!on) h += `<div class="box" style="margin-top:16px"><div class="muted">Live build is off. Turn it on to see it here and in the in-game panel.</div></div>`;
   else if (!lb) h += `<div class="sd-hero"><h3>Starts with your game</h3><p>Once you're in a game, LoLStat reads every player's items, your gold and your augments, and tells you what to buy next to keep your damage ahead of what they're building.</p></div>`;
@@ -1397,7 +1397,7 @@ const HUBS = [
   {key:'play', label:'Play', merge:true, pages:[['mayhem','Champ select & builds'],['live','Live game'],['livebuild','Live build']]},
   {key:'champs', label:'Champions', pages:[['champs','Champions']]},
   {key:'you', label:'You', pages:[['profile','Profile'],['stats','My stats'],['games','Games & damage'],['friends','Friends']]},
-  {key:'fun', label:'Fun', pages:[['fun','Fun'],['showdown','Party Showdown']]},
+  {key:'fun', label:'Fun', pages:[['fun','Missions','missions'],['fun','Chaos','chaos'],['fun','Augment collection','collection'],['fun','Build lab','lab'],['showdown','Party Showdown']]},
   {key:'clips', label:'Clips', pages:[['clips','Clips']]},
   {key:'settings', label:'Settings', pages:[['settings','Settings'],['help','Help']]}];
 const hubOf = p => HUBS.find(h => h.pages.some(x => x[0] === p)) || HUBS[0];
@@ -1411,7 +1411,7 @@ function hubLast(h){ try { const p = localStorage.getItem('lolstat.hub.' + h.key
     const tip = main.querySelector('.tip'); if (tip) tip.textContent = h.label;
     main.onclick = () => go(hubLast(h));
     rail.insertBefore(main, spacer);
-    h.pages.slice(1).forEach(([p]) => { const b = btn(p); if (b) b.remove(); });
+    h.pages.slice(1).forEach(([p]) => { const b = btn(p); if (b && b !== main) b.remove(); });
   });
   const bar = document.createElement('div'); bar.className = 'subtabs'; bar.id = 'subtabs'; bar.setAttribute('role', 'tablist');
   const top = document.querySelector('main .top'); top.parentNode.insertBefore(bar, top.nextSibling);
@@ -1419,7 +1419,15 @@ function hubLast(h){ try { const p = localStorage.getItem('lolstat.hub.' + h.key
 function drawSubtabs(p){
   const h = hubOf(p), bar = q('#subtabs');
   bar.classList.toggle('on', h.pages.length > 1 && !h.merge);
-  bar.innerHTML = h.pages.length > 1 && !h.merge ? h.pages.map(([k, t]) => `<button role="tab" aria-selected="${k === p}" class="${k === p ? 'on' : ''}" onclick="go('${k}')">${t}</button>`).join('') : '';
+  const on = ([k, , sub]) => k === p && (!sub || sub === funTab);
+  bar.innerHTML = h.pages.length > 1 && !h.merge ? h.pages.map((x, i) => `<button role="tab" aria-selected="${on(x)}" class="${on(x) ? 'on' : ''}" onclick="hubTab('${h.key}', ${i})">${x[1]}</button>`).join('') : '';
+}
+// a tab at the top: its page, and for Fun the section inside it (missions, chaos, collection, build lab)
+function hubTab(key, i){
+  const [k, , sub] = HUBS.find(h => h.key === key).pages[i];
+  if (sub){ funTab = sub; try { localStorage.setItem('lolstat.fun', sub); } catch(e){} }
+  go(k);
+  if (sub){ syncFunTabs(); drawFun(); if (sub !== 'lab') loadFun(); drawSubtabs(k); }
 }
 const _go10 = go;
 go = function(p){

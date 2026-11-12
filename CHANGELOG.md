@@ -1,5 +1,12 @@
 # LoLStat patch notes
 
+## LoLStat 4.5.1 (2026-11-12)
+
+Fun's sections are tabs at the top, and Live build has its own tab in the in-game panel again.
+
+- **Fun:** Missions, Chaos, Augment collection, Build lab and Party Showdown are now all tabs across the top of Fun. Fun reopens on the tab you used last.
+- **In-game panel:** Live build is back on its own tab: click Builds or Live build at the top of the panel. Each tab is shorter and easier to read in game, and the panel remembers which one you had open.
+
 ## LoLStat 4.5.0 (2026-11-10)
 
 Smarter builds and starts, a Hall of Fame for every week, month and year, a cleaner Profile, and who you play with most.

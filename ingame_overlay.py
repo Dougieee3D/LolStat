@@ -633,7 +633,7 @@ class InGameLayer(threading.Thread):
             cv.create_line((W - d) * k, (bottom - 4) * k, (W - 4) * k, (bottom - d) * k, fill=MUTED, width=1, tags="grip")
         if bottom < getattr(self, "_panel_h", 0) - 2:
             cv.create_rectangle(2 * k, (bottom - 22) * k, (W - 2) * k, (bottom - 1) * k, fill=GLASS, outline="", tags="grip")
-            cv.create_text(W / 2 * k, (bottom - 11) * k, text="▼  scroll for more" + ("  ·  Live build" if self.settings.get("live_build_on", True) else ""),
+            cv.create_text(W / 2 * k, (bottom - 11) * k, text="▼  scroll for more",
                            fill=MUTED, font=("Segoe UI", max(6, int(7 * k))), tags="grip")
 
     def _panel_click(self, e):
@@ -651,11 +651,11 @@ class InGameLayer(threading.Thread):
         st = self.state or {}
         S = self.settings
         live_on = S.get("live_build_on", True)
-        page = "builds"
+        page = S.get("panel_page", "builds") if live_on else "builds"
         stat_keys = [k for k in ("kda", "cs", "csmin", "kp", "gold", "level") if S.get("ov_show_" + k)]
         sig = json.dumps([(st.get("champion") or {}).get("name"), st.get("builds_locked"), self.build_idx, page, live_on,
                           [[b.get("style"), [i.get("id") for i in b.get("items") or []]] for b in st.get("builds") or []],
-                          st.get("live_build") if live_on else None,
+                          st.get("live_build") if page == "live" else None,
                           [st.get("stats"), st.get("level"), st.get("game_time", 0) // 60] if stat_keys else None,
                           [c.get("name") for c in st.get("chosen") or []] if S.get("ov_show_augments") else None,
                           [S.get("ov_show_steps", True), S.get("ov_show_buynow", True)] + stat_keys], default=str)
@@ -687,8 +687,12 @@ class InGameLayer(threading.Thread):
             names = ", ".join(c.get("name", "") for c in st.get("chosen"))
             items.append(("text", 16, y + 2, (names if len(names) < 52 else names[:50] + "…"), MUTED, ("Segoe UI", 8), "w"))
             y += 18
+        if live_on:                                         # Builds | Live build
+            items.append(("pages", y, page)); y += 28
         builds = st.get("builds") or []
-        if builds:
+        if page == "live":
+            y = self._live_page(items, st.get("live_build"), y, W)
+        elif builds:
             self.build_idx = min(self.build_idx, len(builds) - 1)
             items.append(("tabs", y, len(builds))); y += 28
             b = builds[self.build_idx]
@@ -727,12 +731,6 @@ class InGameLayer(threading.Thread):
             y += 6
         else:
             items.append(("text", 18, y, "Builds show once your champion is known.", MUTED, ("Segoe UI", 9), "w")); y += 22
-        if live_on and st.get("live"):
-            # Live build sits under your builds: scroll down to it
-            items.append(("rule", y + 4)); y += 14
-            items.append(("text", 16, y + 4, "Live build", GOLD, ("Segoe UI Semibold", 10), "w"))
-            items.append(("text", W - 18, y + 4, "adjusts as they build", MUTED, ("Segoe UI", 7), "e")); y += 20
-            y = self._live_page(items, st.get("live_build"), y, W)
         y += 6
         H = y
         self._panel_h = H
